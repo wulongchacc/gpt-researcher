@@ -30,6 +30,9 @@ class Config:
     """
 
     CONFIG_DIR = os.path.join(os.path.dirname(__file__), "variables")
+    RUNTIME_OVERRIDE_KEYS = frozenset(
+        {"FAST_LLM", "SMART_LLM", "STRATEGIC_LLM"}
+    )
 
     def __init__(self, config_path: str | None = None):
         """Initialize the config class.
@@ -94,6 +97,17 @@ class Config:
         self.smart_llm_provider, self.smart_llm_model = self.parse_llm(self.smart_llm)
         self.strategic_llm_provider, self.strategic_llm_model = self.parse_llm(self.strategic_llm)
         self.reasoning_effort = self.parse_reasoning_effort(os.getenv("REASONING_EFFORT"))
+
+    def apply_runtime_overrides(self, overrides: Dict[str, str]) -> None:
+        """Apply whitelisted LLM settings to this config instance only."""
+        unsupported = set(overrides) - self.RUNTIME_OVERRIDE_KEYS
+        if unsupported:
+            names = ", ".join(sorted(unsupported))
+            raise ValueError(f"Unsupported runtime override: {names}")
+
+        for key, value in overrides.items():
+            setattr(self, key.lower(), value)
+        self._set_llm_attributes()
 
     def _handle_deprecated_attributes(self) -> None:
         """Handle deprecated configuration attributes with warnings."""

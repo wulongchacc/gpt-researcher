@@ -18,6 +18,7 @@ from .actions import (
     table_of_contents,
 )
 from .config import Config
+from .config.model_profiles import resolve_model_profile
 from .llm_provider import GenericLLMProvider
 from .memory import Memory
 from .prompts import get_prompt_family
@@ -81,6 +82,9 @@ class GPTResearcher:
         mcp_configs: list[dict] | None = None,
         mcp_max_iterations: int | None = None,
         mcp_strategy: str | None = None,
+        outline: list[dict] | None = None,
+        model_profile: str | None = None,
+        reliability_enabled: bool = True,
         **kwargs
     ):
         """
@@ -141,6 +145,18 @@ class GPTResearcher:
         self.query = query
         self.report_type = report_type
         self.cfg = Config(config_path)
+        self.model_profile = None
+        if report_type in {
+            ReportType.ResearchReport.value,
+            ReportType.DeepResearch.value,
+        } or model_profile is not None:
+            self.model_profile, model_overrides = resolve_model_profile(
+                report_type,
+                model_profile,
+            )
+            self.cfg.apply_runtime_overrides(model_overrides)
+        self.outline = list(outline or [])
+        self.reliability_enabled = bool(reliability_enabled)
         task_language = normalize_report_language(language)
         if task_language:
             self.cfg.language = task_language

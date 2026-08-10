@@ -105,11 +105,61 @@ class WebSocketManagerTests(unittest.IsolatedAsyncioTestCase):
                 tone="Objective",
                 websocket=object(),
                 language="Chinese (Simplified)",
+                model_profile="deep",
+                reliability_enabled=True,
+                outline=[{"id": "section-1", "title": "范围", "description": "定义"}],
             )
 
         self.assertEqual(report, "stub-report")
         self.assertEqual(call_kwargs["config_path"], "custom-config")
         self.assertEqual(call_kwargs["language"], "Chinese (Simplified)")
+        self.assertEqual(call_kwargs["model_profile"], "deep")
+        self.assertIs(call_kwargs["reliability_enabled"], True)
+        self.assertEqual(
+            call_kwargs["outline"],
+            [{"id": "section-1", "title": "范围", "description": "定义"}],
+        )
+
+    async def test_run_agent_passes_execution_options_to_basic_report(self):
+        websocket_manager = _load_websocket_manager_module()
+        captured = {}
+
+        class FakeLogsHandler:
+            def __init__(self, websocket, task):
+                self.websocket = websocket
+                self.task = task
+
+        class FakeBasicReport:
+            def __init__(self, **kwargs):
+                captured.update(kwargs)
+                self.gpt_researcher = object()
+
+            async def run(self):
+                return "stub-report"
+
+        websocket_manager.CustomLogsHandler = FakeLogsHandler
+        websocket_manager.BasicReport = FakeBasicReport
+
+        report = await websocket_manager.run_agent(
+            task="test-task",
+            report_type="deep",
+            report_source="web",
+            source_urls=[],
+            document_urls=[],
+            tone=websocket_manager.Tone.Objective,
+            websocket=object(),
+            model_profile="deep",
+            reliability_enabled=True,
+            outline=[{"id": "section-1", "title": "范围", "description": "定义"}],
+        )
+
+        self.assertEqual(report, "stub-report")
+        self.assertEqual(captured["model_profile"], "deep")
+        self.assertIs(captured["reliability_enabled"], True)
+        self.assertEqual(
+            captured["outline"],
+            [{"id": "section-1", "title": "范围", "description": "定义"}],
+        )
 
 
 if __name__ == "__main__":

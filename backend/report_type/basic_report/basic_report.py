@@ -23,6 +23,9 @@ class BasicReport:
         mcp_strategy=None,
         max_search_results=None,
         language=None,
+        outline=None,
+        model_profile=None,
+        reliability_enabled=True,
     ):
         self.query = query
         self.query_domains = query_domains
@@ -51,6 +54,9 @@ class BasicReport:
             "websocket": self.websocket,
             "headers": self.headers,
             "language": language,
+            "outline": outline,
+            "model_profile": model_profile,
+            "reliability_enabled": reliability_enabled,
         }
 
         # Add MCP parameters if provided

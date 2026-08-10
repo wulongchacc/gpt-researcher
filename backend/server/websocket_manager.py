@@ -98,7 +98,26 @@ class WebSocketManager:
             except Exception:
                 pass  # If this fails too, there's nothing more we can do
 
-    async def start_streaming(self, task, report_type, report_source, source_urls, document_urls, tone, websocket, headers=None, query_domains=[], mcp_enabled=False, mcp_strategy="fast", mcp_configs=[], max_search_results=None, language=None):
+    async def start_streaming(
+        self,
+        task,
+        report_type,
+        report_source,
+        source_urls,
+        document_urls,
+        tone,
+        websocket,
+        headers=None,
+        query_domains=[],
+        mcp_enabled=False,
+        mcp_strategy="fast",
+        mcp_configs=[],
+        max_search_results=None,
+        language=None,
+        outline=None,
+        model_profile=None,
+        reliability_enabled=True,
+    ):
         """Start streaming the output."""
         tone = Tone[tone]
         # add customized JSON config file path here
@@ -109,11 +128,34 @@ class WebSocketManager:
             task, report_type, report_source, source_urls, document_urls, tone, websocket, 
             headers=headers, query_domains=query_domains, config_path=config_path,
             mcp_enabled=mcp_enabled, mcp_strategy=mcp_strategy, mcp_configs=mcp_configs,
-            max_search_results=max_search_results, language=language
+            max_search_results=max_search_results, language=language,
+            outline=outline, model_profile=model_profile,
+            reliability_enabled=reliability_enabled,
         )
         return report
 
-async def run_agent(task, report_type, report_source, source_urls, document_urls, tone: Tone, websocket, stream_output=stream_output, headers=None, query_domains=[], config_path="", return_researcher=False, mcp_enabled=False, mcp_strategy="fast", mcp_configs=[], max_search_results=None, language=None):
+async def run_agent(
+    task,
+    report_type,
+    report_source,
+    source_urls,
+    document_urls,
+    tone: Tone,
+    websocket,
+    stream_output=stream_output,
+    headers=None,
+    query_domains=[],
+    config_path="",
+    return_researcher=False,
+    mcp_enabled=False,
+    mcp_strategy="fast",
+    mcp_configs=[],
+    max_search_results=None,
+    language=None,
+    outline=None,
+    model_profile=None,
+    reliability_enabled=True,
+):
     """Run the agent."""    
     # Create logs handler for this research task
     logs_handler = CustomLogsHandler(websocket, task)
@@ -176,6 +218,9 @@ async def run_agent(task, report_type, report_source, source_urls, document_urls
             mcp_strategy=mcp_strategy if mcp_enabled else None,
             max_search_results=max_search_results,
             language=language,
+            outline=outline,
+            model_profile=model_profile,
+            reliability_enabled=reliability_enabled,
         )
         report = await researcher.run()
 

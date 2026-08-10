@@ -61,6 +61,9 @@ class ResearchRequest(BaseModel):
     branch_name: str
     generate_in_background: bool = True
     language: str | None = None
+    outline: list[dict] | None = None
+    model_profile: str | None = None
+    reliability_enabled: bool = True
 
     @field_validator("language", mode="before")
     @classmethod
@@ -306,6 +309,9 @@ async def write_report(research_request: ResearchRequest, research_id: str = Non
         config_path="",
         return_researcher=True,
         language=research_request.language,
+        outline=research_request.outline,
+        model_profile=research_request.model_profile,
+        reliability_enabled=research_request.reliability_enabled,
     )
 
     docx_path = await write_md_to_word(report_information[0], research_id)
