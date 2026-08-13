@@ -52,6 +52,41 @@ _SUPPORTED_PROVIDERS = {
     "minimax",
 }
 
+_DASHSCOPE_BATCH_SIZES = {
+    "qwen3.7-text-embedding": 20,
+}
+
+
+class _BatchedEmbeddings:
+    """Limit document embedding calls without changing provider behavior."""
+
+    def __init__(self, delegate: Any, batch_size: int):
+        if batch_size <= 0:
+            raise ValueError("batch_size must be greater than zero")
+        self._delegate = delegate
+        self._batch_size = batch_size
+
+    def embed_documents(self, texts: list[str]) -> list[list[float]]:
+        embeddings = []
+        for index in range(0, len(texts), self._batch_size):
+            embeddings.extend(
+                self._delegate.embed_documents(texts[index : index + self._batch_size])
+            )
+        return embeddings
+
+    def embed_query(self, text: str) -> list[float]:
+        return self._delegate.embed_query(text)
+
+    async def aembed_documents(self, texts: list[str]) -> list[list[float]]:
+        embeddings = []
+        for index in range(0, len(texts), self._batch_size):
+            batch = texts[index : index + self._batch_size]
+            embeddings.extend(await self._delegate.aembed_documents(batch))
+        return embeddings
+
+    async def aembed_query(self, text: str) -> list[float]:
+        return await self._delegate.aembed_query(text)
+
 
 class Memory:
     """Manages embedding generation for document similarity and retrieval.
@@ -180,6 +215,8 @@ class Memory:
                 from langchain_community.embeddings import DashScopeEmbeddings
 
                 _embeddings = DashScopeEmbeddings(model=model, **embedding_kwargs)
+                if batch_size := _DASHSCOPE_BATCH_SIZES.get(model):
+                    _embeddings = _BatchedEmbeddings(_embeddings, batch_size)
             case "bedrock":
                 from langchain_aws.embeddings import BedrockEmbeddings
 
