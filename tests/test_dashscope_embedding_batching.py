@@ -6,10 +6,26 @@ import unittest
 from unittest.mock import patch
 
 
+class FakeEmbeddingsBase:
+    pass
+
+
+langchain_core_module = ModuleType("langchain_core")
+langchain_core_embeddings_module = ModuleType("langchain_core.embeddings")
+langchain_core_embeddings_module.Embeddings = FakeEmbeddingsBase
+langchain_core_module.embeddings = langchain_core_embeddings_module
+
 MODULE_PATH = Path(__file__).parents[1] / "gpt_researcher" / "memory" / "embeddings.py"
 SPEC = importlib.util.spec_from_file_location("gpt_researcher_embeddings", MODULE_PATH)
 EMBEDDINGS_MODULE = importlib.util.module_from_spec(SPEC)
-SPEC.loader.exec_module(EMBEDDINGS_MODULE)
+with patch.dict(
+    sys.modules,
+    {
+        "langchain_core": langchain_core_module,
+        "langchain_core.embeddings": langchain_core_embeddings_module,
+    },
+):
+    SPEC.loader.exec_module(EMBEDDINGS_MODULE)
 _BatchedEmbeddings = EMBEDDINGS_MODULE._BatchedEmbeddings
 
 
@@ -26,6 +42,11 @@ class FakeEmbeddings:
 
 
 class BatchedEmbeddingsTest(unittest.TestCase):
+    def test_is_a_langchain_embeddings_instance(self):
+        embeddings = _BatchedEmbeddings(FakeEmbeddings(), batch_size=20)
+
+        self.assertIsInstance(embeddings, FakeEmbeddingsBase)
+
     def test_limits_document_batch_size(self):
         delegate = FakeEmbeddings()
         embeddings = _BatchedEmbeddings(delegate, batch_size=20)

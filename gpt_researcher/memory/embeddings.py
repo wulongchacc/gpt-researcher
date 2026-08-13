@@ -25,6 +25,8 @@ Supported providers:
 import os
 from typing import Any
 
+from langchain_core.embeddings import Embeddings
+
 OPENAI_EMBEDDING_MODEL = os.environ.get(
     "OPENAI_EMBEDDING_MODEL", "text-embedding-3-small"
 )
@@ -57,7 +59,7 @@ _DASHSCOPE_BATCH_SIZES = {
 }
 
 
-class _BatchedEmbeddings:
+class _BatchedEmbeddings(Embeddings):
     """Limit document embedding calls without changing provider behavior."""
 
     def __init__(self, delegate: Any, batch_size: int):
