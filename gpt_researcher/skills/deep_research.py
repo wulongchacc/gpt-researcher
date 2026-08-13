@@ -11,6 +11,7 @@ from gpt_researcher.llm_provider.generic.base import ReasoningEfforts
 from ..utils.llm import create_chat_completion
 from ..utils.enum import ReportType, ReportSource, Tone
 from ..actions.query_processing import get_search_results
+from .outline_execution import outline_to_research_questions
 
 logger = logging.getLogger(__name__)
 
@@ -546,12 +547,14 @@ Return ONLY a JSON object using this exact schema:
         # Log initial costs
         initial_costs = self.researcher.get_costs()
 
-        follow_up_questions = await self.generate_research_plan(self.researcher.query)
+        follow_up_questions = outline_to_research_questions(self.researcher.outline)
+        if not follow_up_questions:
+            follow_up_questions = await self.generate_research_plan(self.researcher.query)
         answers = ["Automatically proceeding with research"] * len(follow_up_questions)
 
         qa_pairs = [f"Q: {q}\nA: {a}" for q, a in zip(follow_up_questions, answers)]
         combined_query = f"""
-        Initial Query: {self.researcher.query}\nFollow - up Questions and Answers:\n
+        Initial Query: {self.researcher.query}\nResearch Directions and Answers:\n
         """ + "\n".join(qa_pairs)
 
         results = await self.deep_research(

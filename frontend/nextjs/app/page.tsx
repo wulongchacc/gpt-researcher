@@ -8,9 +8,14 @@ import { useScrollHandler } from '@/hooks/useScrollHandler';
 import { startLanggraphResearch } from '../components/Langgraph/Langgraph';
 import findDifferences from '../helpers/findDifferences';
 import { Data, ChatBoxSettings, QuestionData, ChatMessage, ChatData } from '../types/data';
+import type { OutlineSection, ResearchExecutionOptions } from '../types/data';
 import { preprocessOrderedData } from '../utils/dataProcessing';
 import { toast } from "react-hot-toast";
 import { v4 as uuidv4 } from 'uuid';
+import { getHost } from '@/helpers/getHost';
+import { requestOutline } from '@/services/outlineApi';
+import { getResearchStartAction, prepareResearchStart } from '@/services/researchStart';
+import { createOutlineRequestGate } from '@/services/outlineRequestGate';
 
 import Hero from "@/components/Hero";
 import ResearchPageLayout from "@/components/layouts/ResearchPageLayout";
@@ -20,6 +25,8 @@ import CopilotResearchContent from "@/components/research/CopilotResearchContent
 import HumanFeedback from "@/components/HumanFeedback";
 import ResearchSidebar from "@/components/ResearchSidebar";
 import { getAppropriateLayout } from "@/utils/getLayout";
+import OutlineEditorModal from "@/components/outline/OutlineEditorModal";
+import OutlinePreparationModal from "@/components/outline/OutlinePreparationModal";
 
 // Import the mobile components
 import MobileHomeScreen from "@/components/mobile/MobileHomeScreen";
@@ -76,6 +83,17 @@ export default function Home() {
   const [currentResearchId, setCurrentResearchId] = useState<string | null>(null);
   const [isMobile, setIsMobile] = useState(false);
   const [isProcessingChat, setIsProcessingChat] = useState(false);
+  const [pendingOutline, setPendingOutline] = useState<{
+    task: string;
+    sections: OutlineSection[];
+  } | null>(null);
+  const [outlinePreparation, setOutlinePreparation] = useState<{
+    task: string;
+    status: "loading" | "error";
+    errorMessage?: string;
+  } | null>(null);
+  const outlineRequestGateRef = useRef(createOutlineRequestGate());
+  const outlineAbortControllerRef = useRef<AbortController | null>(null);
 
   // Use our custom scroll handler
   const { showScrollButton, scrollToBottom } = useScrollHandler(mainContentRef);
@@ -322,7 +340,63 @@ export default function Home() {
     }
   };
 
+  const prepareResearch = async (newQuestion: string) => {
+    if (getResearchStartAction(chatBoxSettings.report_type) === "start_directly") {
+      await startResearch(newQuestion);
+      return;
+    }
+
+    const requestId = outlineRequestGateRef.current.begin();
+    if (requestId === null) return;
+
+    const controller = new AbortController();
+    outlineAbortControllerRef.current = controller;
+    setOutlinePreparation({ task: newQuestion, status: "loading" });
+    setLoading(true);
+    try {
+      const prepared = await prepareResearchStart({
+        task: newQuestion,
+        settings: chatBoxSettings,
+        requestOutline: (request) => requestOutline(request, {
+          baseUrl: getHost(),
+          signal: controller.signal,
+        }),
+      });
+      if (!outlineRequestGateRef.current.finish(requestId)) return;
+
+      if (prepared.action === "start_directly") {
+        setOutlinePreparation(null);
+        await startResearch(newQuestion);
+        return;
+      }
+
+      setOutlinePreparation(null);
+      setPendingOutline({ task: newQuestion, sections: prepared.sections });
+    } catch (error) {
+      if (!outlineRequestGateRef.current.finish(requestId)) return;
+      const message = error instanceof Error ? error.message : "生成提纲失败，请重试";
+      setPromptValue(newQuestion);
+      setOutlinePreparation({
+        task: newQuestion,
+        status: "error",
+        errorMessage: message,
+      });
+    } finally {
+      if (outlineAbortControllerRef.current === controller) {
+        outlineAbortControllerRef.current = null;
+      }
+      if (!outlineRequestGateRef.current.isActive()) setLoading(false);
+    }
+  };
+
   const handleDisplayResult = async (newQuestion: string) => {
+    await prepareResearch(newQuestion);
+  };
+
+  const startResearch = async (
+    newQuestion: string,
+    execution?: ResearchExecutionOptions,
+  ) => {
     // Exit chat mode when starting a new research
     setIsInChatMode(false);
     setShowResult(true);
@@ -334,7 +408,7 @@ export default function Home() {
     setOrderedData((prevOrder) => [...prevOrder, { type: 'question', content: newQuestion }]);
 
     // For mobile, use a simplified approach without websockets
-    if (isMobile) {
+    if (isMobile && chatBoxSettings.report_type !== "deep") {
       try {
         // Create a new unique ID for this research
         const newResearchId = `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
@@ -442,12 +516,48 @@ export default function Home() {
         previousChunk = chunk;
       }
     } else {
-      initializeWebSocket(newQuestion, chatBoxSettings);
+      initializeWebSocket(newQuestion, chatBoxSettings, execution);
     }
+  };
+
+  const handleConfirmOutline = (sections: OutlineSection[]) => {
+    if (!pendingOutline) return;
+
+    const task = pendingOutline.task;
+    setPendingOutline(null);
+    void startResearch(task, { outline: sections, model_profile: "deep" });
+  };
+
+  const handleCancelOutline = () => {
+    if (pendingOutline) setPromptValue(pendingOutline.task);
+    setPendingOutline(null);
+    setLoading(false);
+  };
+
+  const handleCancelOutlinePreparation = () => {
+    const task = outlinePreparation?.task;
+    outlineRequestGateRef.current.cancel();
+    outlineAbortControllerRef.current?.abort();
+    outlineAbortControllerRef.current = null;
+    if (task) setPromptValue(task);
+    setOutlinePreparation(null);
+    setLoading(false);
+  };
+
+  const handleRetryOutline = () => {
+    if (!outlinePreparation || outlinePreparation.status !== "error") return;
+    const task = outlinePreparation.task;
+    setOutlinePreparation(null);
+    void prepareResearch(task);
   };
 
   // Mobile-specific implementation for research
   const handleMobileDisplayResult = async (newQuestion: string) => {
+    if (getResearchStartAction(chatBoxSettings.report_type) === "review_outline") {
+      await prepareResearch(newQuestion);
+      return;
+    }
+
     // Update UI state
     setIsInChatMode(false);
     setShowResult(true);
@@ -662,6 +772,11 @@ export default function Home() {
     setIsInChatMode(false);
     setCurrentResearchId(null); // Reset research ID
     setIsProcessingChat(false);
+    setPendingOutline(null);
+    setOutlinePreparation(null);
+    outlineRequestGateRef.current.cancel();
+    outlineAbortControllerRef.current?.abort();
+    outlineAbortControllerRef.current = null;
     
     // Clear previous research data
     setQuestion("");
@@ -887,6 +1002,21 @@ export default function Home() {
 
   return (
     <>
+      <OutlinePreparationModal
+        open={outlinePreparation !== null}
+        task={outlinePreparation?.task ?? ""}
+        status={outlinePreparation?.status ?? "loading"}
+        errorMessage={outlinePreparation?.errorMessage}
+        onCancel={handleCancelOutlinePreparation}
+        onRetry={handleRetryOutline}
+      />
+      <OutlineEditorModal
+        open={pendingOutline !== null}
+        task={pendingOutline?.task ?? ""}
+        initialSections={pendingOutline?.sections ?? []}
+        onCancel={handleCancelOutline}
+        onConfirm={handleConfirmOutline}
+      />
       {isMobile ? (
         // Mobile view - simplified layout with focus on chat
         getAppropriateLayout({

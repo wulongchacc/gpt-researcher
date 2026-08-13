@@ -220,6 +220,7 @@ async def generate_report(
     relevant_written_contents: list = [],
     cost_callback: callable = None,
     custom_prompt: str = "", # This can be any prompt the user chooses with the context
+    outline_instruction: str = "",
     headers=None,
     prompt_family: type[PromptFamily] | PromptFamily = PromptFamily,
     available_images: list = None,
@@ -256,6 +257,9 @@ async def generate_report(
         content = f"{custom_prompt}\n\nContext: {context}"
     else:
         content = f"{generate_prompt(query, context, report_source, report_format=cfg.report_format, tone=tone, total_words=cfg.total_words, language=cfg.language)}"
+
+    if outline_instruction:
+        content += f"\n\nCONFIRMED REPORT STRUCTURE:\n{outline_instruction}"
     
     # Add available images instruction if images were pre-generated
     if available_images:

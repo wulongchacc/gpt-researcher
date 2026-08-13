@@ -15,6 +15,7 @@ from ..actions import (
     write_report_introduction,
 )
 from ..utils.llm import construct_subtopics
+from .outline_execution import format_outline_report_instruction
 
 
 class ReportGenerator:
@@ -109,6 +110,9 @@ class ReportGenerator:
             report_params["agent_role_prompt"] = self.researcher.cfg.agent_role or self.researcher.role
         report_params["context"] = context
         report_params["custom_prompt"] = custom_prompt
+        report_params["outline_instruction"] = format_outline_report_instruction(
+            self.researcher.outline
+        )
         report_params["available_images"] = available_images  # Pass pre-generated images
 
         if self.researcher.report_type == "subtopic_report":

@@ -1,6 +1,8 @@
 import { useRef, useState, useEffect, useCallback } from 'react';
 import { Data, ChatBoxSettings, QuestionData } from '../types/data';
+import type { ResearchExecutionOptions } from '../types/data';
 import { getHost } from '../helpers/getHost';
+import { buildResearchStartMessage } from '../services/researchStart';
 
 export const useWebSocket = (
   setOrderedData: React.Dispatch<React.SetStateAction<Data[]>>,
@@ -44,7 +46,8 @@ export const useWebSocket = (
 
   const initializeWebSocket = useCallback((
     promptValue: string, 
-    chatBoxSettings: ChatBoxSettings
+    chatBoxSettings: ChatBoxSettings,
+    execution?: ResearchExecutionOptions,
   ) => {
     // Close existing socket if any
     if (socket && socket.readyState === WebSocket.OPEN) {
@@ -72,25 +75,16 @@ export const useWebSocket = (
         
         const domainFilters = JSON.parse(localStorage.getItem('domainFilters') || '[]');
         const domains = domainFilters ? domainFilters.map((domain: any) => domain.value) : [];
-        const { report_type, report_source, tone, language, mcp_enabled, mcp_configs, mcp_strategy } = chatBoxSettings;
-        
         // Start a new research
         try {
           console.log(`Starting new research for: ${promptValue}`);
-          const dataToSend = { 
+          const message = buildResearchStartMessage({
             task: promptValue,
-            report_type, 
-            report_source, 
-            tone,
-            language,
-            query_domains: domains,
-            mcp_enabled: mcp_enabled || false,
-            mcp_strategy: mcp_strategy || "fast",
-            mcp_configs: mcp_configs || []
-          };
-          
-          // Make sure we have a properly formatted command with a space after start
-          const message = `start ${JSON.stringify(dataToSend)}`;
+            settings: chatBoxSettings,
+            queryDomains: domains,
+            execution,
+          });
+
           console.log(`Sending start message, length: ${message.length}`);
           newSocket.send(message);
         } catch (error) {
