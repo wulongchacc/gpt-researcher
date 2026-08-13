@@ -22,6 +22,9 @@ from pydantic import BaseModel, ConfigDict, field_validator
 sys.path.insert(0, os.path.abspath(os.path.dirname(os.path.dirname(__file__))))
 
 from server.websocket_manager import WebSocketManager
+from gpt_researcher.config import Config
+from gpt_researcher.config.model_profiles import resolve_model_profile
+from gpt_researcher.skills.outline import OutlineParseError, OutlinePlanner
 from gpt_researcher.utils.language import normalize_report_language
 from server.server_utils import (
     get_config_dict, sanitize_filename,
@@ -61,11 +64,37 @@ class ResearchRequest(BaseModel):
     branch_name: str
     generate_in_background: bool = True
     language: str | None = None
+    outline: list[dict] | None = None
+    model_profile: str | None = None
+    reliability_enabled: bool = True
 
     @field_validator("language", mode="before")
     @classmethod
     def normalize_language(cls, value):
         return normalize_report_language(value)
+
+
+class OutlineRequest(BaseModel):
+    task: str
+    language: str = "Chinese (Simplified)"
+
+    @field_validator("task")
+    @classmethod
+    def validate_task(cls, value):
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("Research task cannot be empty")
+        return normalized
+
+    @field_validator("language", mode="before")
+    @classmethod
+    def normalize_language(cls, value):
+        return normalize_report_language(value or "Chinese (Simplified)")
+
+
+class OutlineResponse(BaseModel):
+    sections: list[dict]
+    model_profile: str = "deep"
 
 
 class ChatRequest(BaseModel):
@@ -187,6 +216,38 @@ async def read_report(request: Request, research_id: str):
 
 
 # Simplified API routes - no database persistence
+@app.post("/api/outline", response_model=OutlineResponse)
+async def generate_outline(request: OutlineRequest):
+    profile, overrides = resolve_model_profile("deep", "deep")
+    config = Config()
+    config.apply_runtime_overrides(overrides)
+    planner = OutlinePlanner(config)
+
+    try:
+        sections = await planner.generate(
+            task=request.task,
+            language=request.language,
+        )
+    except (OutlineParseError, RuntimeError) as exc:
+        logger.warning("Unable to generate a valid research outline: %s", exc)
+        raise HTTPException(
+            status_code=502,
+            detail=f"Unable to generate a valid research outline: {exc}",
+        ) from exc
+
+    return OutlineResponse(
+        sections=[
+            {
+                "id": section.id,
+                "title": section.title,
+                "description": section.description,
+            }
+            for section in sections
+        ],
+        model_profile=profile,
+    )
+
+
 @app.get("/api/reports")
 async def get_all_reports(report_ids: str = None):
     report_ids_list = report_ids.split(",") if report_ids else None
@@ -306,6 +367,9 @@ async def write_report(research_request: ResearchRequest, research_id: str = Non
         config_path="",
         return_researcher=True,
         language=research_request.language,
+        outline=research_request.outline,
+        model_profile=research_request.model_profile,
+        reliability_enabled=research_request.reliability_enabled,
     )
 
     docx_path = await write_md_to_word(report_information[0], research_id)

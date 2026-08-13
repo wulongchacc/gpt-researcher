@@ -94,6 +94,7 @@ export default function MobileHomeScreen({
           clearTimeout(submissionTimeoutRef.current);
           submissionTimeoutRef.current = null;
         }
+        setIsSubmitting(false);
       } catch (apiError) {
         console.error("API error during research submission:", apiError);
         toast.error("There was a problem submitting your research. Please try again.", {
@@ -312,4 +313,4 @@ export default function MobileHomeScreen({
       `}</style>
     </div>
   );
-} 
+}

@@ -140,6 +140,9 @@ async def handle_start_command(websocket, data: str, manager):
         mcp_configs,
         max_search_results,
         language,
+        outline,
+        model_profile,
+        reliability_enabled,
     ) = extract_command_data(json_data)
 
     if not task or not report_type:
@@ -173,6 +176,9 @@ async def handle_start_command(websocket, data: str, manager):
         mcp_configs=mcp_configs,
         max_search_results=max_search_results,
         language=language,
+        outline=outline,
+        model_profile=model_profile,
+        reliability_enabled=reliability_enabled,
     )
     report = str(report)
     file_paths = await generate_report_files(report, sanitized_filename)
@@ -413,4 +419,7 @@ def extract_command_data(json_data: Dict) -> tuple:
         json_data.get("mcp_configs", []),
         json_data.get("max_search_results"),
         normalize_report_language(json_data.get("language")),
+        json_data.get("outline"),
+        json_data.get("model_profile"),
+        json_data.get("reliability_enabled", True),
     )

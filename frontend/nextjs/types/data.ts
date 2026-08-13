@@ -40,6 +40,27 @@ export interface MCPConfig {
 
 export type ReportLanguage = "Chinese (Simplified)" | "English";
 
+export interface OutlineSection {
+  id: string;
+  title: string;
+  description: string;
+}
+
+export interface OutlineRequest {
+  task: string;
+  language: ReportLanguage;
+}
+
+export interface OutlineResponse {
+  sections: OutlineSection[];
+  model_profile: "deep";
+}
+
+export interface ResearchExecutionOptions {
+  outline?: OutlineSection[];
+  model_profile?: "deep";
+}
+
 export interface ChatBoxSettings {
   report_type: string;
   report_source: string;
