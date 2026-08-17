@@ -35,7 +35,7 @@ interface RequestOutlineOptions {
   signal?: AbortSignal;
 }
 
-const DEFAULT_TIMEOUT_MS = 30_000;
+const DEFAULT_TIMEOUT_MS = 120_000;
 
 const isOutlineSection = (value: unknown): value is OutlineSection => {
   if (!value || typeof value !== "object") return false;
@@ -50,14 +50,17 @@ const isOutlineSection = (value: unknown): value is OutlineSection => {
   );
 };
 
-const parseOutlineResponse = (value: unknown): OutlineResponse => {
+const parseOutlineResponse = (
+  value: unknown,
+  expectedProfile: OutlineRequest["model_profile"],
+): OutlineResponse => {
   if (!value || typeof value !== "object") {
     throw new OutlineApiError("提纲接口返回了无效数据", "invalid_response");
   }
 
   const response = value as Record<string, unknown>;
   if (
-    response.model_profile !== "deep" ||
+    response.model_profile !== expectedProfile ||
     !Array.isArray(response.sections) ||
     response.sections.length < 3 ||
     response.sections.length > 5 ||
@@ -136,7 +139,7 @@ export const requestOutline = async (
       throw new OutlineApiError("提纲接口返回了无效数据", "invalid_response");
     }
 
-    return parseOutlineResponse(body);
+    return parseOutlineResponse(body, request.model_profile);
   } catch (error) {
     if (error instanceof OutlineApiError) throw error;
     if (options.signal?.aborted) {

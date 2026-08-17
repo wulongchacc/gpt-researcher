@@ -39,6 +39,7 @@ export interface MCPConfig {
 }
 
 export type ReportLanguage = "Chinese (Simplified)" | "English";
+export type ModelProfile = "simple" | "deep";
 
 export interface OutlineSection {
   id: string;
@@ -49,16 +50,18 @@ export interface OutlineSection {
 export interface OutlineRequest {
   task: string;
   language: ReportLanguage;
+  report_type: "research_report" | "deep";
+  model_profile: ModelProfile;
 }
 
 export interface OutlineResponse {
   sections: OutlineSection[];
-  model_profile: "deep";
+  model_profile: ModelProfile;
 }
 
 export interface ResearchExecutionOptions {
   outline?: OutlineSection[];
-  model_profile?: "deep";
+  model_profile?: ModelProfile;
 }
 
 export interface ChatBoxSettings {
@@ -72,6 +75,7 @@ export interface ChatBoxSettings {
   mcp_configs: MCPConfig[];
   mcp_strategy?: string;
   language: ReportLanguage;
+  confirm_outline_before_research?: boolean;
 }
 
 export interface Domain {
