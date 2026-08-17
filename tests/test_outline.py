@@ -271,15 +271,18 @@ class OutlinePlannerTests(unittest.IsolatedAsyncioTestCase):
         )
 
         planner = module.OutlinePlanner(config)
+        cost_callback = Mock()
         result = await planner.generate(
             task="研究人工智能对软件开发岗位的影响",
             language="Chinese (Simplified)",
+            cost_callback=cost_callback,
         )
 
         self.assertEqual(len(result), 3)
         call = completion.await_args.kwargs
         self.assertEqual(call["llm_provider"], "dashscope")
         self.assertEqual(call["model"], "qwen3.7-max")
+        self.assertIs(call["cost_callback"], cost_callback)
         prompt = "\n".join(message["content"] for message in call["messages"])
         self.assertIn("Chinese (Simplified)", prompt)
         self.assertIn("研究人工智能对软件开发岗位的影响", prompt)
@@ -301,7 +304,60 @@ class OutlineApiTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(hasattr(module, "OutlineRequest"))
         self.assertTrue(hasattr(module, "generate_outline"))
 
-    async def test_endpoint_uses_deep_profile_and_returns_sections(self):
+    async def test_endpoint_uses_requested_simple_profile(self):
+        module = _load_app_module()
+        self._require_api(module)
+        config = SimpleNamespace(apply_runtime_overrides=Mock())
+        module.Config = Mock(return_value=config)
+        module.resolve_model_profile = Mock(
+            return_value=("simple", {"STRATEGIC_LLM": "dashscope:qwen-plus"})
+        )
+        planner = SimpleNamespace(
+            generate=AsyncMock(
+                return_value=[
+                    SimpleNamespace(
+                        id="section-1",
+                        title="行业背景",
+                        description="研究范围",
+                    ),
+                    SimpleNamespace(
+                        id="section-2",
+                        title="应用现状",
+                        description="研究范围",
+                    ),
+                    SimpleNamespace(
+                        id="section-3",
+                        title="未来趋势",
+                        description="研究范围",
+                    ),
+                ]
+            )
+        )
+        module.OutlinePlanner = Mock(return_value=planner)
+
+        response = await module.generate_outline(
+            module.OutlineRequest(
+                task="研究人工智能对软件开发岗位的影响",
+                language="Chinese (Simplified)",
+                report_type="research_report",
+                model_profile="simple",
+            )
+        )
+
+        module.resolve_model_profile.assert_called_once_with(
+            "research_report", "simple"
+        )
+        config.apply_runtime_overrides.assert_called_once_with(
+            {"STRATEGIC_LLM": "dashscope:qwen-plus"}
+        )
+        planner.generate.assert_awaited_once_with(
+            task="研究人工智能对软件开发岗位的影响",
+            language="Chinese (Simplified)",
+        )
+        self.assertEqual(response.model_profile, "simple")
+        self.assertEqual(response.sections[0]["id"], "section-1")
+
+    async def test_endpoint_uses_requested_deep_profile_and_returns_sections(self):
         module = _load_app_module()
         self._require_api(module)
         config = SimpleNamespace(apply_runtime_overrides=Mock())
@@ -336,6 +392,8 @@ class OutlineApiTests(unittest.IsolatedAsyncioTestCase):
             module.OutlineRequest(
                 task="研究人工智能对软件开发岗位的影响",
                 language="Chinese (Simplified)",
+                report_type="deep",
+                model_profile="deep",
             )
         )
 
@@ -350,12 +408,27 @@ class OutlineApiTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response.model_profile, "deep")
         self.assertEqual(response.sections[0]["id"], "section-1")
 
+    def test_mismatched_report_type_and_profile_is_rejected(self):
+        module = _load_app_module()
+        self._require_api(module)
+
+        with self.assertRaises(ValidationError):
+            module.OutlineRequest(
+                task="研究主题",
+                report_type="research_report",
+                model_profile="deep",
+            )
+
     def test_blank_task_is_rejected_by_request_model(self):
         module = _load_app_module()
         self._require_api(module)
 
         with self.assertRaises(ValidationError):
-            module.OutlineRequest(task="   ")
+            module.OutlineRequest(
+                task="   ",
+                report_type="deep",
+                model_profile="deep",
+            )
 
     async def test_planner_failure_is_returned_as_http_502(self):
         module = _load_app_module()
@@ -370,7 +443,13 @@ class OutlineApiTests(unittest.IsolatedAsyncioTestCase):
 
         with self.assertLogs(module.logger, level="WARNING"):
             with self.assertRaises(module.HTTPException) as raised:
-                await module.generate_outline(module.OutlineRequest(task="研究问题"))
+                await module.generate_outline(
+                    module.OutlineRequest(
+                        task="研究问题",
+                        report_type="deep",
+                        model_profile="deep",
+                    )
+                )
 
         self.assertEqual(raised.exception.status_code, 502)
         self.assertIn("invalid outline", raised.exception.detail)
@@ -388,7 +467,13 @@ class OutlineApiTests(unittest.IsolatedAsyncioTestCase):
 
         with self.assertLogs(module.logger, level="WARNING"):
             with self.assertRaises(module.HTTPException) as raised:
-                await module.generate_outline(module.OutlineRequest(task="研究问题"))
+                await module.generate_outline(
+                    module.OutlineRequest(
+                        task="研究问题",
+                        report_type="deep",
+                        model_profile="deep",
+                    )
+                )
 
         self.assertEqual(raised.exception.status_code, 502)
         self.assertIn("dashscope unavailable", raised.exception.detail)

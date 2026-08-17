@@ -6,7 +6,7 @@ import {
   requestOutline,
 } from "../services/outlineApi.ts";
 
-const validResponse = {
+const validDeepResponse = {
   sections: [
     { id: "section-1", title: "行业背景", description: "说明研究背景" },
     { id: "section-2", title: "市场现状", description: "分析当前市场" },
@@ -21,11 +21,16 @@ test("requestOutline posts the task and language to the outline endpoint", async
   const fetchImpl: typeof fetch = async (input, init) => {
     capturedUrl = String(input);
     capturedInit = init;
-    return Response.json(validResponse);
+    return Response.json(validDeepResponse);
   };
 
   const result = await requestOutline(
-    { task: "研究中国新能源汽车市场", language: "Chinese (Simplified)" },
+    {
+      task: "研究中国新能源汽车市场",
+      language: "Chinese (Simplified)",
+      report_type: "deep",
+      model_profile: "deep",
+    },
     { baseUrl: "http://localhost:8000/", fetchImpl },
   );
 
@@ -35,8 +40,61 @@ test("requestOutline posts the task and language to the outline endpoint", async
   assert.deepEqual(JSON.parse(String(capturedInit?.body)), {
     task: "研究中国新能源汽车市场",
     language: "Chinese (Simplified)",
+    report_type: "deep",
+    model_profile: "deep",
   });
-  assert.deepEqual(result, validResponse);
+  assert.deepEqual(result, validDeepResponse);
+});
+
+test("requestOutline accepts a matching simple response profile", async () => {
+  let capturedBody: unknown;
+  const fetchImpl: typeof fetch = async (_input, init) => {
+    capturedBody = JSON.parse(String(init?.body));
+    return Response.json({
+      ...validDeepResponse,
+      model_profile: "simple",
+    });
+  };
+
+  const result = await requestOutline(
+    {
+      task: "研究中国新能源汽车市场",
+      language: "Chinese (Simplified)",
+      report_type: "research_report",
+      model_profile: "simple",
+    },
+    { baseUrl: "http://localhost:8000/", fetchImpl },
+  );
+
+  assert.deepEqual(capturedBody, {
+    task: "研究中国新能源汽车市场",
+    language: "Chinese (Simplified)",
+    report_type: "research_report",
+    model_profile: "simple",
+  });
+  assert.equal(result.model_profile, "simple");
+});
+
+test("requestOutline rejects a response with a mismatched model profile", async () => {
+  const fetchImpl: typeof fetch = async () =>
+    Response.json(validDeepResponse);
+
+  await assert.rejects(
+    requestOutline(
+      {
+        task: "研究主题",
+        language: "Chinese (Simplified)",
+        report_type: "research_report",
+        model_profile: "simple",
+      },
+      { baseUrl: "http://localhost:8000", fetchImpl },
+    ),
+    (error: unknown) => {
+      assert.ok(error instanceof OutlineApiError);
+      assert.equal(error.code, "invalid_response");
+      return true;
+    },
+  );
 });
 
 test("requestOutline exposes the backend error detail", async () => {
@@ -48,7 +106,12 @@ test("requestOutline exposes the backend error detail", async () => {
 
   await assert.rejects(
     requestOutline(
-      { task: "研究主题", language: "Chinese (Simplified)" },
+      {
+        task: "研究主题",
+        language: "Chinese (Simplified)",
+        report_type: "deep",
+        model_profile: "deep",
+      },
       { baseUrl: "http://localhost:8000", fetchImpl },
     ),
     (error: unknown) => {
@@ -67,7 +130,12 @@ test("requestOutline rejects malformed successful responses", async () => {
 
   await assert.rejects(
     requestOutline(
-      { task: "研究主题", language: "Chinese (Simplified)" },
+      {
+        task: "研究主题",
+        language: "Chinese (Simplified)",
+        report_type: "deep",
+        model_profile: "deep",
+      },
       { baseUrl: "http://localhost:8000", fetchImpl },
     ),
     (error: unknown) => {
@@ -87,7 +155,12 @@ test("requestOutline classifies a non-JSON success response as invalid", async (
 
   await assert.rejects(
     requestOutline(
-      { task: "研究主题", language: "Chinese (Simplified)" },
+      {
+        task: "研究主题",
+        language: "Chinese (Simplified)",
+        report_type: "deep",
+        model_profile: "deep",
+      },
       { baseUrl: "http://localhost:8000", fetchImpl },
     ),
     (error: unknown) => {
@@ -108,7 +181,12 @@ test("requestOutline aborts a request after the configured timeout", async () =>
 
   await assert.rejects(
     requestOutline(
-      { task: "研究主题", language: "Chinese (Simplified)" },
+      {
+        task: "研究主题",
+        language: "Chinese (Simplified)",
+        report_type: "deep",
+        model_profile: "deep",
+      },
       { baseUrl: "http://localhost:8000", fetchImpl, timeoutMs: 5 },
     ),
     (error: unknown) => {
@@ -129,7 +207,12 @@ test("requestOutline stops when the caller cancels the request", async () => {
     });
 
   const request = requestOutline(
-    { task: "研究主题", language: "Chinese (Simplified)" },
+    {
+      task: "研究主题",
+      language: "Chinese (Simplified)",
+      report_type: "deep",
+      model_profile: "deep",
+    },
     {
       baseUrl: "http://localhost:8000",
       fetchImpl,
@@ -157,7 +240,12 @@ test("requestOutline reports cancellation when the caller signal is already canc
 
   await assert.rejects(
     requestOutline(
-      { task: "研究主题", language: "Chinese (Simplified)" },
+      {
+        task: "研究主题",
+        language: "Chinese (Simplified)",
+        report_type: "deep",
+        model_profile: "deep",
+      },
       {
         baseUrl: "http://localhost:8000",
         fetchImpl,

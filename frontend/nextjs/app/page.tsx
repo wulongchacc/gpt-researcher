@@ -53,6 +53,7 @@ export default function Home() {
       mcp_configs: [],
       mcp_strategy: "fast",
       language: "Chinese (Simplified)" as const,
+      confirm_outline_before_research: false,
     };
 
     // Try to load all settings from localStorage
@@ -341,7 +342,7 @@ export default function Home() {
   };
 
   const prepareResearch = async (newQuestion: string) => {
-    if (getResearchStartAction(chatBoxSettings.report_type) === "start_directly") {
+    if (getResearchStartAction(chatBoxSettings) === "start_directly") {
       await startResearch(newQuestion);
       return;
     }
@@ -408,7 +409,11 @@ export default function Home() {
     setOrderedData((prevOrder) => [...prevOrder, { type: 'question', content: newQuestion }]);
 
     // For mobile, use a simplified approach without websockets
-    if (isMobile && chatBoxSettings.report_type !== "deep") {
+    if (
+      isMobile &&
+      chatBoxSettings.report_type !== "deep" &&
+      !execution?.outline?.length
+    ) {
       try {
         // Create a new unique ID for this research
         const newResearchId = `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
@@ -524,8 +529,9 @@ export default function Home() {
     if (!pendingOutline) return;
 
     const task = pendingOutline.task;
+    const modelProfile = chatBoxSettings.report_type === "deep" ? "deep" : "simple";
     setPendingOutline(null);
-    void startResearch(task, { outline: sections, model_profile: "deep" });
+    void startResearch(task, { outline: sections, model_profile: modelProfile });
   };
 
   const handleCancelOutline = () => {
@@ -553,7 +559,7 @@ export default function Home() {
 
   // Mobile-specific implementation for research
   const handleMobileDisplayResult = async (newQuestion: string) => {
-    if (getResearchStartAction(chatBoxSettings.report_type) === "review_outline") {
+    if (getResearchStartAction(chatBoxSettings) === "review_outline") {
       await prepareResearch(newQuestion);
       return;
     }

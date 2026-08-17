@@ -75,6 +75,36 @@ class ReliabilityMetricsTests(unittest.TestCase):
         self.assertAlmostEqual(summary["average_duration_seconds"], 10.0)
         self.assertAlmostEqual(summary["average_cost"], 0.1)
 
+    def test_summarize_runs_aggregates_outline_coverage(self):
+        summary = summarize_runs(
+            [
+                {
+                    "error": None,
+                    "duration_seconds": 10.0,
+                    "cost": 0.1,
+                    "citation_count": 4,
+                    "valid_citation_count": 3,
+                    "report_success": True,
+                    "outline_section_count": 3,
+                    "outline_covered_count": 2,
+                },
+                {
+                    "error": None,
+                    "duration_seconds": 12.0,
+                    "cost": 0.2,
+                    "citation_count": 4,
+                    "valid_citation_count": 4,
+                    "report_success": True,
+                    "outline_section_count": 4,
+                    "outline_covered_count": 4,
+                },
+            ]
+        )
+
+        self.assertEqual(summary["outline_section_count"], 7)
+        self.assertEqual(summary["outline_covered_count"], 6)
+        self.assertAlmostEqual(summary["outline_coverage_rate"], 6 / 7)
+
 
 if __name__ == "__main__":
     unittest.main()

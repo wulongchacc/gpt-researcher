@@ -23,6 +23,7 @@ const settings: ChatBoxSettings = {
   mcp_configs: [],
   mcp_strategy: "fast",
   language: "Chinese (Simplified)",
+  confirm_outline_before_research: false,
 };
 
 const outline: OutlineSection[] = [
@@ -31,11 +32,23 @@ const outline: OutlineSection[] = [
   { id: "section-3", title: "未来趋势", description: "研究趋势" },
 ];
 
-test("getResearchStartAction routes only deep reports through outline review", () => {
-  assert.equal(getResearchStartAction("deep"), "review_outline");
-  assert.equal(getResearchStartAction("research_report"), "start_directly");
-  assert.equal(getResearchStartAction("detailed_report"), "start_directly");
-  assert.equal(getResearchStartAction("multi_agents"), "start_directly");
+test("getResearchStartAction reviews deep reports and opted-in simple reports", () => {
+  assert.equal(
+    getResearchStartAction({ ...settings, report_type: "deep" }),
+    "review_outline",
+  );
+  assert.equal(getResearchStartAction(settings), "start_directly");
+  assert.equal(
+    getResearchStartAction({
+      ...settings,
+      confirm_outline_before_research: true,
+    }),
+    "review_outline",
+  );
+  assert.equal(
+    getResearchStartAction({ ...settings, report_type: "detailed_report" }),
+    "start_directly",
+  );
 });
 
 test("prepareResearchStart does not request an outline for a simple report", async () => {
@@ -45,12 +58,35 @@ test("prepareResearchStart does not request an outline for a simple report", asy
     settings,
     requestOutline: async () => {
       requestCount += 1;
-      return { sections: outline, model_profile: "deep" };
+      return { sections: outline, model_profile: "simple" };
     },
   });
 
   assert.deepEqual(result, { action: "start_directly" });
   assert.equal(requestCount, 0);
+});
+
+test("prepareResearchStart requests a simple outline when the preference is enabled", async () => {
+  let capturedRequest: unknown;
+  const result = await prepareResearchStart({
+    task: "研究主题",
+    settings: {
+      ...settings,
+      confirm_outline_before_research: true,
+    },
+    requestOutline: async (request) => {
+      capturedRequest = request;
+      return { sections: outline, model_profile: "simple" };
+    },
+  });
+
+  assert.deepEqual(capturedRequest, {
+    task: "研究主题",
+    language: "Chinese (Simplified)",
+    report_type: "research_report",
+    model_profile: "simple",
+  });
+  assert.deepEqual(result, { action: "review_outline", sections: outline });
 });
 
 test("prepareResearchStart requests an outline before deep research", async () => {
@@ -67,8 +103,25 @@ test("prepareResearchStart requests an outline before deep research", async () =
   assert.deepEqual(capturedRequest, {
     task: "研究主题",
     language: "Chinese (Simplified)",
+    report_type: "deep",
+    model_profile: "deep",
   });
   assert.deepEqual(result, { action: "review_outline", sections: outline });
+});
+
+test("buildResearchStartPayload includes a confirmed outline for opted-in simple research", () => {
+  const payload = buildResearchStartPayload({
+    task: "研究主题",
+    settings: {
+      ...settings,
+      confirm_outline_before_research: true,
+    },
+    queryDomains: [],
+    execution: { outline, model_profile: "simple" },
+  });
+
+  assert.equal(payload.model_profile, "simple");
+  assert.deepEqual(payload.outline, outline);
 });
 
 test("buildResearchStartPayload leaves simple requests unchanged", () => {
@@ -119,6 +172,37 @@ test("buildResearchStartPayload rejects deep execution without an outline", () =
         settings: { ...settings, report_type: "deep" },
         queryDomains: [],
         execution: { model_profile: "deep" },
+      }),
+    /confirmed outline/i,
+  );
+});
+
+test("buildResearchStartPayload rejects an outline with the wrong model profile", () => {
+  assert.throws(
+    () =>
+      buildResearchStartPayload({
+        task: "研究主题",
+        settings: {
+          ...settings,
+          confirm_outline_before_research: true,
+        },
+        queryDomains: [],
+        execution: { outline, model_profile: "deep" },
+      }),
+    /model profile/i,
+  );
+});
+
+test("buildResearchStartPayload rejects opted-in simple execution without an outline", () => {
+  assert.throws(
+    () =>
+      buildResearchStartPayload({
+        task: "研究主题",
+        settings: {
+          ...settings,
+          confirm_outline_before_research: true,
+        },
+        queryDomains: [],
       }),
     /confirmed outline/i,
   );

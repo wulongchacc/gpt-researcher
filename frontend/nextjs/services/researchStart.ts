@@ -1,5 +1,6 @@
 import type {
   ChatBoxSettings,
+  ModelProfile,
   OutlineRequest,
   OutlineResponse,
   OutlineSection,
@@ -19,7 +20,7 @@ export interface ResearchStartPayload {
   mcp_strategy: string;
   mcp_configs: ChatBoxSettings["mcp_configs"];
   outline?: OutlineSection[];
-  model_profile?: "deep";
+  model_profile?: ModelProfile;
 }
 
 interface BuildResearchStartPayloadOptions {
@@ -29,10 +30,18 @@ interface BuildResearchStartPayloadOptions {
   execution?: ResearchExecutionOptions;
 }
 
+const getModelProfile = (reportType: string): ModelProfile =>
+  reportType === "deep" ? "deep" : "simple";
+
 export const getResearchStartAction = (
-  reportType: string,
-): ResearchStartAction =>
-  reportType === "deep" ? "review_outline" : "start_directly";
+  settings: ChatBoxSettings,
+): ResearchStartAction => {
+  return settings.report_type === "deep" ||
+    (settings.report_type === "research_report" &&
+      settings.confirm_outline_before_research)
+    ? "review_outline"
+    : "start_directly";
+};
 
 interface PrepareResearchStartOptions {
   task: string;
@@ -49,12 +58,16 @@ export const prepareResearchStart = async ({
   settings,
   requestOutline,
 }: PrepareResearchStartOptions): Promise<PreparedResearchStart> => {
-  const action = getResearchStartAction(settings.report_type);
+  const action = getResearchStartAction(settings);
   if (action === "start_directly") return { action };
+
+  const modelProfile = getModelProfile(settings.report_type);
 
   const response = await requestOutline({
     task,
     language: settings.language,
+    report_type: settings.report_type === "deep" ? "deep" : "research_report",
+    model_profile: modelProfile,
   });
   return { action, sections: response.sections };
 };
@@ -65,11 +78,25 @@ export const buildResearchStartPayload = ({
   queryDomains,
   execution,
 }: BuildResearchStartPayloadOptions): ResearchStartPayload => {
+  const requiresOutline =
+    settings.report_type === "deep" ||
+    (settings.report_type === "research_report" &&
+      settings.confirm_outline_before_research);
+
   if (
-    settings.report_type === "deep" &&
+    requiresOutline &&
     (!execution?.outline || execution.outline.length === 0)
   ) {
-    throw new Error("Deep research requires a confirmed outline");
+    throw new Error("Research requires a confirmed outline");
+  }
+
+  if (execution?.outline) {
+    const expectedProfile = getModelProfile(settings.report_type);
+    if (execution.model_profile !== expectedProfile) {
+      throw new Error(
+        `Outline model profile must be ${expectedProfile} for ${settings.report_type}`,
+      );
+    }
   }
 
   const payload: ResearchStartPayload = {
@@ -84,9 +111,9 @@ export const buildResearchStartPayload = ({
     mcp_configs: settings.mcp_configs || [],
   };
 
-  if (settings.report_type === "deep" && execution?.outline) {
+  if (execution?.outline) {
     payload.outline = execution.outline;
-    payload.model_profile = "deep";
+    payload.model_profile = execution.model_profile;
   }
 
   return payload;

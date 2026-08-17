@@ -4,6 +4,7 @@ import ToneSelector from "../Settings/ToneSelector";
 import MCPSelector from "../Settings/MCPSelector";
 import LayoutSelector from "../Settings/LayoutSelector";
 import LanguageSelector from "../Settings/LanguageSelector";
+import OutlineConfirmationToggle from "../Settings/OutlineConfirmationToggle";
 import DomainFilter from "./DomainFilter";
 import { useAnalytics } from "../../hooks/useAnalytics";
 import { ChatBoxSettings, Domain, MCPConfig } from '@/types/data';
@@ -157,6 +158,17 @@ export default function ResearchForm({
       <LanguageSelector
         language={language}
         onLanguageChange={onFormChange}
+      />
+
+      <OutlineConfirmationToggle
+        checked={chatBoxSettings.confirm_outline_before_research}
+        disabled={report_type !== "research_report"}
+        onChange={(checked) =>
+          setChatBoxSettings((previous) => ({
+            ...previous,
+            confirm_outline_before_research: checked,
+          }))
+        }
       />
 
       <ToneSelector tone={tone} onToneChange={onToneChange} />
