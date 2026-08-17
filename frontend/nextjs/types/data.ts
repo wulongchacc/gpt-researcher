@@ -75,7 +75,7 @@ export interface ChatBoxSettings {
   mcp_configs: MCPConfig[];
   mcp_strategy?: string;
   language: ReportLanguage;
-  confirm_outline_before_research?: boolean;
+  confirm_outline_before_research: boolean;
 }
 
 export interface Domain {

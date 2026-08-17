@@ -48,6 +48,7 @@ export const GPTResearcher = ({
     mcp_configs: [],
     mcp_strategy: 'fast',
     language: 'Chinese (Simplified)',
+    confirm_outline_before_research: false,
   });
   const [question, setQuestion] = useState("");
   const [orderedData, setOrderedData] = useState<Data[]>([]);

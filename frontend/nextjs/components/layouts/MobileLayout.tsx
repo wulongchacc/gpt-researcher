@@ -4,6 +4,7 @@ import Image from "next/image";
 import { ChatBoxSettings, ReportLanguage } from "@/types/data";
 import { useResearchHistoryContext } from "@/hooks/ResearchHistoryContext";
 import { formatDistanceToNow } from "date-fns";
+import OutlineConfirmationToggle from "@/components/Settings/OutlineConfirmationToggle";
 
 interface MobileLayoutProps {
   children: React.ReactNode;
@@ -266,6 +267,17 @@ export default function MobileLayout({
                   <option value="English">English</option>
                 </select>
               </div>
+
+              <OutlineConfirmationToggle
+                checked={chatBoxSettings.confirm_outline_before_research}
+                disabled={chatBoxSettings.report_type !== "research_report"}
+                onChange={(checked) =>
+                  setChatBoxSettings((previous) => ({
+                    ...previous,
+                    confirm_outline_before_research: checked,
+                  }))
+                }
+              />
 
               <div>
                 <label className="block text-xs text-gray-400 mb-1">Research Tone</label>
