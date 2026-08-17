@@ -50,6 +50,22 @@ class OutlineExecutionTests(unittest.TestCase):
         self.assertIn("2. 未来趋势：未来三年变化", instruction)
         self.assertLess(instruction.index("行业现状"), instruction.index("未来趋势"))
 
+    def test_simple_report_instruction_preserves_all_confirmed_chinese_headings(self):
+        module = _load_outline_module()
+        outline = [
+            {"id": "section-1", "title": "应用现状", "description": "典型场景"},
+            {"id": "section-2", "title": "主要风险", "description": "现实约束"},
+            {"id": "section-3", "title": "未来趋势", "description": "三年展望"},
+        ]
+
+        instruction = module.format_outline_report_instruction(outline)
+
+        positions = [instruction.index(section["title"]) for section in outline]
+        self.assertEqual(positions, sorted(positions))
+        self.assertIn("1. 应用现状：典型场景", instruction)
+        self.assertIn("2. 主要风险：现实约束", instruction)
+        self.assertIn("3. 未来趋势：三年展望", instruction)
+
 
 if __name__ == "__main__":
     unittest.main()

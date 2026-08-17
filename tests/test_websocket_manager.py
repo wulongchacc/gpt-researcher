@@ -161,6 +161,45 @@ class WebSocketManagerTests(unittest.IsolatedAsyncioTestCase):
             [{"id": "section-1", "title": "范围", "description": "定义"}],
         )
 
+    async def test_run_agent_passes_simple_outline_to_basic_report(self):
+        websocket_manager = _load_websocket_manager_module()
+        captured = {}
+
+        class FakeLogsHandler:
+            def __init__(self, websocket, task):
+                self.websocket = websocket
+                self.task = task
+
+        class FakeBasicReport:
+            def __init__(self, **kwargs):
+                captured.update(kwargs)
+                self.gpt_researcher = object()
+
+            async def run(self):
+                return "stub-report"
+
+        websocket_manager.CustomLogsHandler = FakeLogsHandler
+        websocket_manager.BasicReport = FakeBasicReport
+        outline = [
+            {"id": "section-1", "title": "现状", "description": "应用范围"}
+        ]
+
+        report = await websocket_manager.run_agent(
+            task="test-task",
+            report_type="research_report",
+            report_source="web",
+            source_urls=[],
+            document_urls=[],
+            tone=websocket_manager.Tone.Objective,
+            websocket=object(),
+            model_profile="simple",
+            outline=outline,
+        )
+
+        self.assertEqual(report, "stub-report")
+        self.assertEqual(captured["model_profile"], "simple")
+        self.assertEqual(captured["outline"], outline)
+
 
 if __name__ == "__main__":
     unittest.main()

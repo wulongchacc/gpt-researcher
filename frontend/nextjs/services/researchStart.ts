@@ -34,17 +34,11 @@ const getModelProfile = (reportType: string): ModelProfile =>
   reportType === "deep" ? "deep" : "simple";
 
 export const getResearchStartAction = (
-  settingsOrReportType: ChatBoxSettings | string,
+  settings: ChatBoxSettings,
 ): ResearchStartAction => {
-  if (typeof settingsOrReportType === "string") {
-    return settingsOrReportType === "deep"
-      ? "review_outline"
-      : "start_directly";
-  }
-
-  return settingsOrReportType.report_type === "deep" ||
-    (settingsOrReportType.report_type === "research_report" &&
-      settingsOrReportType.confirm_outline_before_research)
+  return settings.report_type === "deep" ||
+    (settings.report_type === "research_report" &&
+      settings.confirm_outline_before_research)
     ? "review_outline"
     : "start_directly";
 };
