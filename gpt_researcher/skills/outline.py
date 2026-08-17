@@ -92,6 +92,7 @@ class OutlinePlanner:
         self,
         task: str,
         language: str = "English",
+        cost_callback=None,
     ) -> list[OutlineSection]:
         normalized_task = task.strip()
         if not normalized_task:
@@ -128,5 +129,6 @@ class OutlinePlanner:
             max_tokens=getattr(self.config, "strategic_token_limit", 2000),
             llm_kwargs=getattr(self.config, "llm_kwargs", {}),
             temperature=0.2,
+            cost_callback=cost_callback,
         )
         return parse_outline_response(raw)

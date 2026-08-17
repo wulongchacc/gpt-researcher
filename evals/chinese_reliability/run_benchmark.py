@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Callable, Iterable
 
 from .metrics import build_run_metrics, summarize_runs
+from .outline_metrics import measure_outline_coverage
 from .source_validator import SourceValidator
 
 
@@ -69,6 +70,73 @@ def load_cases(
     return cases
 
 
+def load_outline_records(path: str | Path) -> dict[str, dict]:
+    records = json.loads(Path(path).read_text(encoding="utf-8"))
+    if not isinstance(records, list):
+        raise ValueError("outline file must contain a JSON list")
+
+    records_by_id: dict[str, dict] = {}
+    for record in records:
+        if not isinstance(record, dict):
+            raise ValueError("each outline record must be an object")
+        required = {
+            "id",
+            "question",
+            "sections",
+            "outline_duration_seconds",
+            "outline_cost",
+        }
+        if not required.issubset(record):
+            raise ValueError("each outline record is missing required fields")
+        if record["id"] in records_by_id:
+            raise ValueError(f"duplicate outline id: {record['id']}")
+        if not isinstance(record["question"], str) or not record["question"].strip():
+            raise ValueError("outline question must be non-empty")
+        sections = record["sections"]
+        if not isinstance(sections, list) or not 3 <= len(sections) <= 5:
+            raise ValueError("each outline must contain 3 to 5 sections")
+        if not all(
+            isinstance(section, dict)
+            and isinstance(section.get("id"), str)
+            and isinstance(section.get("title"), str)
+            and section["title"].strip()
+            and isinstance(section.get("description"), str)
+            for section in sections
+        ):
+            raise ValueError("outline sections must contain id, title and description")
+        records_by_id[record["id"]] = record
+    return records_by_id
+
+
+def validate_outline_records_for_cases(
+    cases: list[dict],
+    mode: str,
+    records: dict[str, dict] | None,
+) -> dict[str, dict]:
+    if mode == "baseline":
+        return {}
+    if mode != "enhanced":
+        raise ValueError(f"unsupported benchmark mode: {mode}")
+    if any(case["report_type"] != "research_report" for case in cases):
+        raise ValueError("enhanced mode only supports Simple cases")
+    if len(cases) != 5:
+        raise ValueError("enhanced mode requires exactly 5 Simple cases")
+
+    records = records or {}
+    expected_ids = {case["id"] for case in cases}
+    missing = sorted(expected_ids - records.keys())
+    unexpected = sorted(records.keys() - expected_ids)
+    if missing:
+        raise ValueError(f"missing outline records: {', '.join(missing)}")
+    if unexpected:
+        raise ValueError(f"unexpected outline records: {', '.join(unexpected)}")
+    for case in cases:
+        record = records[case["id"]]
+        if record["question"] != case["question"]:
+            raise ValueError(f"outline question mismatch: {case['id']}")
+    return records
+
+
 def default_researcher_factory(**kwargs):
     # Delayed import keeps metric/unit tests independent of the full app stack.
     from gpt_researcher.agent import GPTResearcher
@@ -79,32 +147,54 @@ def default_researcher_factory(**kwargs):
 async def run_single_case(
     case: dict,
     *,
+    mode: str = "baseline",
+    outline_record: dict | None = None,
     researcher_factory: Callable = default_researcher_factory,
     validator: SourceValidator | None = None,
 ) -> dict:
+    if mode not in {"baseline", "enhanced"}:
+        raise ValueError(f"unsupported benchmark mode: {mode}")
+    if mode == "enhanced":
+        if outline_record is None:
+            raise ValueError("enhanced mode requires an outline record")
+        if outline_record["id"] != case["id"] or outline_record["question"] != case["question"]:
+            raise ValueError(f"outline record does not match query: {case['id']}")
+
     validator = validator or SourceValidator()
     report = ""
     source_results = []
     error = None
-    cost = None
+    outline_duration = (
+        float(outline_record["outline_duration_seconds"])
+        if outline_record
+        else 0.0
+    )
+    outline_cost = float(outline_record["outline_cost"]) if outline_record else 0.0
+    cost = outline_cost if outline_record else None
     started = time.perf_counter()
 
     try:
-        researcher = researcher_factory(
+        researcher_kwargs = dict(
             query=case["question"],
             report_type=case["report_type"],
             report_format="markdown",
             language="Chinese (Simplified)",
             verbose=False,
         )
+        if outline_record:
+            researcher_kwargs.update(
+                outline=outline_record["sections"],
+                model_profile="simple",
+            )
+        researcher = researcher_factory(**researcher_kwargs)
         await researcher.conduct_research()
         report = await researcher.write_report()
         source_results = await validator.validate_many(researcher.get_source_urls())
-        cost = researcher.get_costs()
+        cost = outline_cost + researcher.get_costs()
     except Exception as exc:
         error = f"{type(exc).__name__}: {exc}"
 
-    duration_seconds = time.perf_counter() - started
+    duration_seconds = outline_duration + time.perf_counter() - started
     is_deep = case["report_type"] == "deep"
     metrics = build_run_metrics(
         report=report,
@@ -115,6 +205,10 @@ async def run_single_case(
         min_report_chars=1500 if is_deep else 400,
         min_valid_sources=5 if is_deep else 2,
     )
+    outline_metrics = measure_outline_coverage(
+        report,
+        outline_record["sections"] if outline_record else [],
+    )
     return {
         "id": case["id"],
         "question": case["question"],
@@ -123,6 +217,9 @@ async def run_single_case(
         "report": report,
         "source_results": [asdict(result) for result in source_results],
         "retry_count": 0,
+        "outline_duration_seconds": outline_duration,
+        "outline_cost": outline_cost,
+        **outline_metrics,
         **metrics,
     }
 
@@ -135,8 +232,8 @@ def _summary_markdown(metadata: dict, summaries: dict) -> str:
         f"- Git提交：`{metadata['git_commit']}`",
         f"- 运行时间：`{metadata['timestamp']}`",
         "",
-        "| 报告模式 | 题目数 | 成功率 | 有效引用率 | 平均耗时（秒） | 平均成本 |",
-        "|---|---:|---:|---:|---:|---:|",
+        "| 报告模式 | 题目数 | 成功率 | 有效引用率 | 平均耗时（秒） | 平均成本 | 提纲覆盖率 |",
+        "|---|---:|---:|---:|---:|---:|---:|",
     ]
     labels = {"overall": "整体", "research_report": "Simple", "deep": "Deep"}
     for key in ("overall", "research_report", "deep"):
@@ -144,13 +241,14 @@ def _summary_markdown(metadata: dict, summaries: dict) -> str:
         duration = summary["average_duration_seconds"]
         cost = summary["average_cost"]
         lines.append(
-            "| {label} | {count} | {success:.1%} | {valid:.1%} | {duration} | {cost} |".format(
+            "| {label} | {count} | {success:.1%} | {valid:.1%} | {duration} | {cost} | {coverage:.1%} |".format(
                 label=labels[key],
                 count=summary["total_queries"],
                 success=summary["report_success_rate"],
                 valid=summary["valid_citation_rate"],
                 duration=f"{duration:.1f}" if duration is not None else "-",
                 cost=f"${cost:.4f}" if cost is not None else "-",
+                coverage=summary["outline_coverage_rate"],
             )
         )
     return "\n".join(lines) + "\n"
@@ -220,12 +318,29 @@ def build_metadata(mode: str) -> dict:
     }
 
 
-async def run_benchmark(cases: list[dict], output_dir: Path, metadata: dict) -> list[dict]:
+async def run_benchmark(
+    cases: list[dict],
+    output_dir: Path,
+    metadata: dict,
+    *,
+    mode: str = "baseline",
+    outline_records: dict[str, dict] | None = None,
+) -> list[dict]:
     runs: list[dict] = []
     validator = SourceValidator()
+    validated_outlines = validate_outline_records_for_cases(
+        cases,
+        mode,
+        outline_records,
+    )
     for index, case in enumerate(cases, start=1):
         print(f"[{index}/{len(cases)}] {case['id']} {case['question']}", flush=True)
-        result = await run_single_case(case, validator=validator)
+        result = await run_single_case(
+            case,
+            mode=mode,
+            outline_record=validated_outlines.get(case["id"]),
+            validator=validator,
+        )
         runs.append(result)
         write_outputs(output_dir, runs, metadata)
         state = "成功" if result["report_success"] else "未达成功标准"
@@ -244,6 +359,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--output-dir", type=Path)
     parser.add_argument("--limit", type=int)
     parser.add_argument("--ids", nargs="+")
+    parser.add_argument("--outlines", type=Path)
     return parser.parse_args(argv)
 
 
@@ -253,8 +369,22 @@ def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     output_dir = args.output_dir or DEFAULT_OUTPUT_ROOT / args.mode
     cases = load_cases(args.queries, args.limit, args.ids)
+    outline_records = (
+        load_outline_records(args.outlines)
+        if args.outlines is not None
+        else None
+    )
+    validate_outline_records_for_cases(cases, args.mode, outline_records)
     metadata = build_metadata(args.mode)
-    asyncio.run(run_benchmark(cases, output_dir, metadata))
+    asyncio.run(
+        run_benchmark(
+            cases,
+            output_dir,
+            metadata,
+            mode=args.mode,
+            outline_records=outline_records,
+        )
+    )
     print(f"结果已保存：{output_dir}")
     return 0
 

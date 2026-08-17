@@ -271,15 +271,18 @@ class OutlinePlannerTests(unittest.IsolatedAsyncioTestCase):
         )
 
         planner = module.OutlinePlanner(config)
+        cost_callback = Mock()
         result = await planner.generate(
             task="研究人工智能对软件开发岗位的影响",
             language="Chinese (Simplified)",
+            cost_callback=cost_callback,
         )
 
         self.assertEqual(len(result), 3)
         call = completion.await_args.kwargs
         self.assertEqual(call["llm_provider"], "dashscope")
         self.assertEqual(call["model"], "qwen3.7-max")
+        self.assertIs(call["cost_callback"], cost_callback)
         prompt = "\n".join(message["content"] for message in call["messages"])
         self.assertIn("Chinese (Simplified)", prompt)
         self.assertIn("研究人工智能对软件开发岗位的影响", prompt)

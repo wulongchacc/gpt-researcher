@@ -54,6 +54,12 @@ def summarize_runs(runs: Iterable[Mapping]) -> dict:
     valid_citation_count = sum(
         int(run.get("valid_citation_count", 0)) for run in run_list
     )
+    outline_section_count = sum(
+        int(run.get("outline_section_count", 0)) for run in run_list
+    )
+    outline_covered_count = sum(
+        int(run.get("outline_covered_count", 0)) for run in run_list
+    )
 
     return {
         "total_queries": len(run_list),
@@ -76,4 +82,11 @@ def summarize_runs(runs: Iterable[Mapping]) -> dict:
             else None
         ),
         "average_cost": sum(costs) / len(costs) if costs else None,
+        "outline_section_count": outline_section_count,
+        "outline_covered_count": outline_covered_count,
+        "outline_coverage_rate": (
+            outline_covered_count / outline_section_count
+            if outline_section_count
+            else 0.0
+        ),
     }
