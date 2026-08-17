@@ -1,6 +1,6 @@
 import json
 import os
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Literal
 import time
 import logging
 import sys
@@ -16,7 +16,7 @@ from contextlib import asynccontextmanager
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse, HTMLResponse
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
 # Add the parent directory to sys.path to make sure we can import from server
 sys.path.insert(0, os.path.abspath(os.path.dirname(os.path.dirname(__file__))))
@@ -77,6 +77,8 @@ class ResearchRequest(BaseModel):
 class OutlineRequest(BaseModel):
     task: str
     language: str = "Chinese (Simplified)"
+    report_type: Literal["research_report", "deep"]
+    model_profile: Literal["simple", "deep"]
 
     @field_validator("task")
     @classmethod
@@ -91,10 +93,17 @@ class OutlineRequest(BaseModel):
     def normalize_language(cls, value):
         return normalize_report_language(value or "Chinese (Simplified)")
 
+    @model_validator(mode="after")
+    def validate_profile_matches_report_type(self):
+        expected = "deep" if self.report_type == "deep" else "simple"
+        if self.model_profile != expected:
+            raise ValueError("model_profile does not match report_type")
+        return self
+
 
 class OutlineResponse(BaseModel):
     sections: list[dict]
-    model_profile: str = "deep"
+    model_profile: Literal["simple", "deep"]
 
 
 class ChatRequest(BaseModel):
@@ -218,7 +227,10 @@ async def read_report(request: Request, research_id: str):
 # Simplified API routes - no database persistence
 @app.post("/api/outline", response_model=OutlineResponse)
 async def generate_outline(request: OutlineRequest):
-    profile, overrides = resolve_model_profile("deep", "deep")
+    profile, overrides = resolve_model_profile(
+        request.report_type,
+        request.model_profile,
+    )
     config = Config()
     config.apply_runtime_overrides(overrides)
     planner = OutlinePlanner(config)
