@@ -233,7 +233,11 @@ async def generate_outline(request: OutlineRequest):
     )
     config = Config()
     config.apply_runtime_overrides(overrides)
-    planner = OutlinePlanner(config)
+    planner = (
+        OutlinePlanner(config, section_count=3)
+        if profile == "simple"
+        else OutlinePlanner(config)
+    )
 
     try:
         sections = await planner.generate(

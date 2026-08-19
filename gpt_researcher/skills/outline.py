@@ -85,8 +85,9 @@ def parse_outline_response(raw: str) -> list[OutlineSection]:
 class OutlinePlanner:
     """Generate a structured outline with the request's strategic model."""
 
-    def __init__(self, config):
+    def __init__(self, config, section_count: int | None = None):
         self.config = config
+        self.section_count = section_count
 
     async def generate(
         self,
@@ -99,6 +100,11 @@ class OutlinePlanner:
             raise ValueError("The research task cannot be empty")
 
         normalized_language = language.strip() or "English"
+        section_requirement = (
+            f"Return exactly {self.section_count} non-overlapping sections."
+            if self.section_count
+            else "Return 3 to 5 non-overlapping sections."
+        )
         messages = [
             {
                 "role": "system",
@@ -112,7 +118,7 @@ class OutlinePlanner:
                 "content": (
                     f"Create a research outline for this task: {normalized_task}\n"
                     f"Write the outline in: {normalized_language}\n"
-                    "Return 3 to 5 non-overlapping sections. Each section must be "
+                    f"{section_requirement} Each section must be "
                     "researchable from public information and describe the questions "
                     "it should answer. Use exactly this schema:\n"
                     '{"sections": [{"title": "<title>", '
@@ -131,4 +137,7 @@ class OutlinePlanner:
             temperature=0.2,
             cost_callback=cost_callback,
         )
-        return parse_outline_response(raw)
+        sections = parse_outline_response(raw)
+        if self.section_count:
+            return sections[: self.section_count]
+        return sections

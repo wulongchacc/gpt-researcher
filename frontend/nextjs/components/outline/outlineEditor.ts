@@ -17,8 +17,9 @@ export const updateOutlineSection = (
 export const addOutlineSection = (
   sections: OutlineSection[],
   createId: () => string,
+  maxSections = MAX_OUTLINE_SECTIONS,
 ): OutlineSection[] => {
-  if (sections.length >= MAX_OUTLINE_SECTIONS) return sections;
+  if (sections.length >= maxSections) return sections;
 
   return [
     ...sections,
@@ -29,8 +30,9 @@ export const addOutlineSection = (
 export const removeOutlineSection = (
   sections: OutlineSection[],
   sectionId: string,
+  minSections = MIN_OUTLINE_SECTIONS,
 ): OutlineSection[] => {
-  if (sections.length <= MIN_OUTLINE_SECTIONS) return sections;
+  if (sections.length <= minSections) return sections;
   return sections.filter((section) => section.id !== sectionId);
 };
 
@@ -54,12 +56,16 @@ export const moveOutlineSection = (
 
 export const validateOutlineSections = (
   sections: OutlineSection[],
+  minSections = MIN_OUTLINE_SECTIONS,
+  maxSections = MAX_OUTLINE_SECTIONS,
 ): string | null => {
   if (
-    sections.length < MIN_OUTLINE_SECTIONS ||
-    sections.length > MAX_OUTLINE_SECTIONS
+    sections.length < minSections ||
+    sections.length > maxSections
   ) {
-    return `提纲需要包含 ${MIN_OUTLINE_SECTIONS}–${MAX_OUTLINE_SECTIONS} 个章节`;
+    return minSections === maxSections
+      ? `提纲需要包含 ${minSections} 个章节`
+      : `提纲需要包含 ${minSections}–${maxSections} 个章节`;
   }
 
   const normalizedTitles = sections.map((section) => section.title.trim());
@@ -76,8 +82,11 @@ export const validateOutlineSections = (
   return null;
 };
 
-export const canConfirmOutline = (sections: OutlineSection[]): boolean =>
-  validateOutlineSections(sections) === null;
+export const canConfirmOutline = (
+  sections: OutlineSection[],
+  minSections = MIN_OUTLINE_SECTIONS,
+  maxSections = MAX_OUTLINE_SECTIONS,
+): boolean => validateOutlineSections(sections, minSections, maxSections) === null;
 
 export const normalizeOutlineSections = (
   sections: OutlineSection[],
