@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { createPortal } from "react-dom";
 
-import type { OutlineSection } from "../../types/data";
+import type { ModelProfile, OutlineSection } from "../../types/data";
 import {
   MAX_OUTLINE_SECTIONS,
   MIN_OUTLINE_SECTIONS,
@@ -21,6 +21,7 @@ interface OutlineEditorModalProps {
   open: boolean;
   task: string;
   initialSections: OutlineSection[];
+  modelProfile: ModelProfile;
   onCancel: () => void;
   onConfirm: (sections: OutlineSection[]) => void;
 }
@@ -57,12 +58,17 @@ export default function OutlineEditorModal({
   open,
   task,
   initialSections,
+  modelProfile,
   onCancel,
   onConfirm,
 }: OutlineEditorModalProps) {
   const [mounted, setMounted] = useState(false);
   const [sections, setSections] = useState<OutlineSection[]>(initialSections);
   const [validationError, setValidationError] = useState<string | null>(null);
+  const minSections = MIN_OUTLINE_SECTIONS;
+  const maxSections = modelProfile === "simple"
+    ? MIN_OUTLINE_SECTIONS
+    : MAX_OUTLINE_SECTIONS;
 
   useEffect(() => setMounted(true), []);
 
@@ -99,7 +105,7 @@ export default function OutlineEditorModal({
   };
 
   const confirmOutline = () => {
-    const error = validateOutlineSections(sections);
+    const error = validateOutlineSections(sections, minSections, maxSections);
     if (error) {
       setValidationError(error);
       return;
@@ -133,10 +139,12 @@ export default function OutlineEditorModal({
         <div className="overflow-y-auto px-4 py-4 sm:px-6">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
             <p className="text-sm text-gray-300">
-              调整章节后再开始深度研究（{MIN_OUTLINE_SECTIONS}–{MAX_OUTLINE_SECTIONS} 章）
+              {modelProfile === "simple"
+                ? `确认 3 个章节后再开始研究`
+                : `调整章节后再开始深度研究（${minSections}–${maxSections} 章）`}
             </p>
             <span className="text-xs font-medium text-teal-300">
-              {sections.length}/{MAX_OUTLINE_SECTIONS}
+              {sections.length}/{maxSections}
             </span>
           </div>
 
@@ -197,8 +205,8 @@ export default function OutlineEditorModal({
                   </IconButton>
                   <IconButton
                     label={`删除第 ${index + 1} 章`}
-                    disabled={sections.length <= MIN_OUTLINE_SECTIONS}
-                    onClick={() => setSections((current) => removeOutlineSection(current, section.id))}
+                    disabled={sections.length <= minSections}
+                    onClick={() => setSections((current) => removeOutlineSection(current, section.id, minSections))}
                   >
                     <span aria-hidden="true" className="text-lg leading-none">−</span>
                   </IconButton>
@@ -209,8 +217,8 @@ export default function OutlineEditorModal({
 
           <button
             type="button"
-            disabled={sections.length >= MAX_OUTLINE_SECTIONS}
-            onClick={() => setSections((current) => addOutlineSection(current, createSectionId))}
+            disabled={sections.length >= maxSections}
+            onClick={() => setSections((current) => addOutlineSection(current, createSectionId, maxSections))}
             className="mt-4 flex h-10 items-center gap-2 rounded-md border border-dashed border-gray-600 px-4 text-sm font-medium text-gray-300 transition-colors hover:border-teal-500 hover:text-teal-300 disabled:cursor-not-allowed disabled:opacity-40"
           >
             <span aria-hidden="true" className="text-lg leading-none">+</span>
@@ -234,7 +242,7 @@ export default function OutlineEditorModal({
           </button>
           <button
             type="button"
-            disabled={!canConfirmOutline(sections)}
+            disabled={!canConfirmOutline(sections, minSections, maxSections)}
             onClick={confirmOutline}
             className="h-11 rounded-md bg-teal-600 px-6 text-sm font-semibold text-white transition-colors hover:bg-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-400 focus:ring-offset-2 focus:ring-offset-gray-900 disabled:cursor-not-allowed disabled:bg-gray-700 disabled:text-gray-400"
           >

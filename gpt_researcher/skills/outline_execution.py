@@ -5,6 +5,9 @@ from __future__ import annotations
 from typing import Any
 
 
+SIMPLE_OUTLINE_SECTION_COUNT = 3
+
+
 def _normalized_sections(outline: list[dict[str, Any]] | None) -> list[tuple[str, str]]:
     sections: list[tuple[str, str]] = []
     for section in outline or []:
@@ -26,6 +29,29 @@ def outline_to_research_questions(
         f"{title}：{description}" if description else title
         for title, description in _normalized_sections(outline)
     ]
+
+
+def build_simple_outline_search_queries(
+    outline: list[dict[str, Any]] | None,
+    original_query: str,
+) -> list[str]:
+    """Build bounded Simple-mode searches from a confirmed outline."""
+    candidates = outline_to_research_questions(outline)[
+        :SIMPLE_OUTLINE_SECTION_COUNT
+    ]
+    normalized_original = " ".join(str(original_query or "").split())
+    if normalized_original:
+        candidates.append(normalized_original)
+
+    queries: list[str] = []
+    seen: set[str] = set()
+    for candidate in candidates:
+        normalized = " ".join(candidate.split())
+        key = normalized.casefold()
+        if normalized and key not in seen:
+            seen.add(key)
+            queries.append(normalized)
+    return queries
 
 
 def format_outline_report_instruction(

@@ -16,6 +16,7 @@ from ..actions.utils import stream_output
 from ..document import DocumentLoader, LangChainDocumentLoader, OnlineDocumentLoader
 from ..utils.enum import ReportSource, ReportType
 from ..utils.logging_config import get_json_handler
+from .outline_execution import build_simple_outline_search_queries
 
 
 class ResearchConductor:
@@ -326,13 +327,27 @@ class ResearchConductor:
                 self._mcp_results_cache = mcp_context
                 self.logger.info(f"MCP results cached: {len(mcp_context)} total context entries")
 
-        # Generate Sub-Queries including original query
-        sub_queries = await self.plan_research(query, query_domains)
-        self.logger.info(f"Generated sub-queries: {sub_queries}")
-        
-        # If this is not part of a sub researcher, add original query to research for better results
-        if self.researcher.report_type != "subtopic_report":
-            sub_queries.append(query)
+        uses_confirmed_simple_outline = (
+            self.researcher.model_profile == "simple"
+            and self.researcher.outline
+            and self.researcher.report_type != "subtopic_report"
+        )
+        if uses_confirmed_simple_outline:
+            sub_queries = build_simple_outline_search_queries(
+                self.researcher.outline,
+                query,
+            )
+            self.logger.info(
+                "Using confirmed Simple outline for bounded search queries: %s",
+                sub_queries,
+            )
+        else:
+            # Preserve the original automatic planning flow when no outline was confirmed.
+            sub_queries = await self.plan_research(query, query_domains)
+            self.logger.info(f"Generated sub-queries: {sub_queries}")
+
+            if self.researcher.report_type != "subtopic_report":
+                sub_queries.append(query)
 
         if self.researcher.verbose:
             await stream_output(
@@ -350,11 +365,20 @@ class ResearchConductor:
                 *[
                     self._process_sub_query(sub_query, scraped_data, query_domains)
                     for sub_query in sub_queries
-                ]
+                ],
+                return_exceptions=uses_confirmed_simple_outline,
             )
             self.logger.info(f"Gathered context from {len(context)} sub-queries")
+            if uses_confirmed_simple_outline:
+                for sub_query, result in zip(sub_queries, context):
+                    if isinstance(result, Exception):
+                        self.logger.error(
+                            "Confirmed-outline query failed; keeping other results for '%s': %s",
+                            sub_query,
+                            result,
+                        )
             # Filter out empty results and join the context
-            context = [c for c in context if c]
+            context = [c for c in context if c and not isinstance(c, Exception)]
             if context:
                 combined_context = " ".join(context)
                 self.logger.info(f"Combined context size: {len(combined_context)}")

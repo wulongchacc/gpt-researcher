@@ -1020,6 +1020,7 @@ export default function Home() {
         open={pendingOutline !== null}
         task={pendingOutline?.task ?? ""}
         initialSections={pendingOutline?.sections ?? []}
+        modelProfile={chatBoxSettings.report_type === "deep" ? "deep" : "simple"}
         onCancel={handleCancelOutline}
         onConfirm={handleConfirmOutline}
       />

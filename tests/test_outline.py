@@ -287,6 +287,37 @@ class OutlinePlannerTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Chinese (Simplified)", prompt)
         self.assertIn("研究人工智能对软件开发岗位的影响", prompt)
 
+    async def test_simple_planner_limits_outline_to_exactly_three_sections(self):
+        module = _load_outline_module()
+        completion = AsyncMock(
+            return_value=_raw_outline(
+                _section("行业背景"),
+                _section("应用现状"),
+                _section("主要风险"),
+                _section("未来趋势"),
+                _section("实施建议"),
+            )
+        )
+        module.create_chat_completion = completion
+        config = SimpleNamespace(
+            strategic_llm_provider="dashscope",
+            strategic_llm_model="qwen-plus",
+            reasoning_effort=None,
+            strategic_token_limit=2000,
+            llm_kwargs={},
+        )
+
+        planner = module.OutlinePlanner(config)
+        planner.section_count = 3
+        result = await planner.generate(
+            task="研究人工智能对软件开发岗位的影响",
+            language="Chinese (Simplified)",
+        )
+
+        self.assertEqual(len(result), 3)
+        prompt = completion.await_args.kwargs["messages"][1]["content"]
+        self.assertIn("exactly 3 non-overlapping sections", prompt)
+
     async def test_generate_rejects_blank_task_without_calling_model(self):
         module = _load_outline_module()
         completion = AsyncMock()
@@ -350,6 +381,7 @@ class OutlineApiTests(unittest.IsolatedAsyncioTestCase):
         config.apply_runtime_overrides.assert_called_once_with(
             {"STRATEGIC_LLM": "dashscope:qwen-plus"}
         )
+        module.OutlinePlanner.assert_called_once_with(config, section_count=3)
         planner.generate.assert_awaited_once_with(
             task="研究人工智能对软件开发岗位的影响",
             language="Chinese (Simplified)",
@@ -401,6 +433,7 @@ class OutlineApiTests(unittest.IsolatedAsyncioTestCase):
         config.apply_runtime_overrides.assert_called_once_with(
             {"STRATEGIC_LLM": "dashscope:qwen3.7-max"}
         )
+        module.OutlinePlanner.assert_called_once_with(config)
         planner.generate.assert_awaited_once_with(
             task="研究人工智能对软件开发岗位的影响",
             language="Chinese (Simplified)",

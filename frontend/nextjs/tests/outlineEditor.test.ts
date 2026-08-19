@@ -46,6 +46,12 @@ test("addOutlineSection adds a blank section but never exceeds five", () => {
   assert.equal(stillFive, five);
 });
 
+test("simple outline cannot add a fourth section", () => {
+  const result = addOutlineSection(sections, () => "section-4", 3);
+
+  assert.equal(result, sections);
+});
+
 test("removeOutlineSection never leaves fewer than three sections", () => {
   assert.equal(removeOutlineSection(sections, "section-2"), sections);
 
@@ -98,6 +104,17 @@ test("canConfirmOutline disables confirmation for an invalid outline", () => {
     ]),
     false,
   );
+});
+
+test("simple outline requires exactly three sections", () => {
+  const four = [
+    ...sections,
+    { id: "section-4", title: "实施建议", description: "落地路径" },
+  ];
+
+  assert.equal(validateOutlineSections(sections, 3, 3), null);
+  assert.match(validateOutlineSections(four, 3, 3) ?? "", /3 个章节/);
+  assert.equal(canConfirmOutline(four, 3, 3), false);
 });
 
 test("normalizeOutlineSections trims text without changing section ids", () => {
