@@ -60,6 +60,12 @@ def summarize_runs(runs: Iterable[Mapping]) -> dict:
     outline_covered_count = sum(
         int(run.get("outline_covered_count", 0)) for run in run_list
     )
+    candidate_source_count = sum(
+        int(run.get("candidate_source_count", 0)) for run in run_list
+    )
+    reachable_candidate_source_count = sum(
+        int(run.get("reachable_candidate_source_count", 0)) for run in run_list
+    )
 
     return {
         "total_queries": len(run_list),
@@ -75,6 +81,13 @@ def summarize_runs(runs: Iterable[Mapping]) -> dict:
         "valid_citation_count": valid_citation_count,
         "valid_citation_rate": (
             valid_citation_count / citation_count if citation_count else 0.0
+        ),
+        "candidate_source_count": candidate_source_count,
+        "reachable_candidate_source_count": reachable_candidate_source_count,
+        "candidate_source_reachability_rate": (
+            reachable_candidate_source_count / candidate_source_count
+            if candidate_source_count
+            else 0.0
         ),
         "average_duration_seconds": (
             sum(float(run["duration_seconds"]) for run in completed) / len(completed)

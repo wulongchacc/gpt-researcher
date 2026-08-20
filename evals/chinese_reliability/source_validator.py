@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 import socket
 from dataclasses import dataclass
 from typing import Awaitable, Callable, Iterable, Literal
@@ -22,6 +23,91 @@ TRACKING_QUERY_KEYS = {
     "spm",
 }
 BLOCKED_STATUS_CODES = {401, 403, 429}
+
+
+def _without_markdown_code(value: str) -> str:
+    value = re.sub(r"```.*?```", "", value, flags=re.DOTALL)
+    return re.sub(r"(?<!`)`[^`\n]*`", "", value)
+
+
+def _find_unescaped(value: str, target: str, start: int) -> int:
+    index = start
+    while index < len(value):
+        if value[index] == "\\":
+            index += 2
+            continue
+        if value[index] == target:
+            return index
+        index += 1
+    return -1
+
+
+def _read_link_destination(value: str, start: int) -> tuple[str | None, int]:
+    index = start
+    while index < len(value) and value[index].isspace():
+        index += 1
+    if index >= len(value):
+        return None, index
+
+    if value[index] == "<":
+        end = _find_unescaped(value, ">", index + 1)
+        if end == -1:
+            return None, index + 1
+        return value[index + 1 : end], end + 1
+
+    destination: list[str] = []
+    nested_parentheses = 0
+    while index < len(value):
+        character = value[index]
+        if character == "\\" and index + 1 < len(value):
+            destination.append(value[index + 1])
+            index += 2
+            continue
+        if character == "(":
+            nested_parentheses += 1
+        elif character == ")":
+            if nested_parentheses == 0:
+                break
+            nested_parentheses -= 1
+        elif character.isspace() and nested_parentheses == 0:
+            break
+        destination.append(character)
+        index += 1
+    return "".join(destination), index
+
+
+def extract_report_citation_urls(report: str) -> list[str]:
+    """Extract normalized HTTP(S) destinations from final Markdown links."""
+    if not isinstance(report, str) or not report:
+        return []
+
+    markdown = _without_markdown_code(report)
+    urls: list[str] = []
+    index = 0
+    while index < len(markdown):
+        opening = markdown.find("[", index)
+        if opening == -1:
+            break
+        if opening > 0 and markdown[opening - 1] == "!":
+            index = opening + 1
+            continue
+
+        closing = _find_unescaped(markdown, "]", opening + 1)
+        if closing == -1:
+            break
+        cursor = closing + 1
+        while cursor < len(markdown) and markdown[cursor].isspace():
+            cursor += 1
+        if cursor >= len(markdown) or markdown[cursor] != "(":
+            index = closing + 1
+            continue
+
+        destination, next_index = _read_link_destination(markdown, cursor + 1)
+        if destination:
+            urls.append(destination)
+        index = max(next_index, cursor + 1)
+
+    return deduplicate_urls(urls)
 
 
 @dataclass(frozen=True)

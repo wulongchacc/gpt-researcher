@@ -105,6 +105,36 @@ class ReliabilityMetricsTests(unittest.TestCase):
         self.assertEqual(summary["outline_covered_count"], 6)
         self.assertAlmostEqual(summary["outline_coverage_rate"], 6 / 7)
 
+    def test_summarize_runs_aggregates_candidate_source_reachability(self):
+        summary = summarize_runs(
+            [
+                {
+                    "error": None,
+                    "duration_seconds": 10.0,
+                    "cost": 0.1,
+                    "citation_count": 2,
+                    "valid_citation_count": 2,
+                    "candidate_source_count": 5,
+                    "reachable_candidate_source_count": 3,
+                    "report_success": True,
+                },
+                {
+                    "error": None,
+                    "duration_seconds": 12.0,
+                    "cost": 0.2,
+                    "citation_count": 3,
+                    "valid_citation_count": 2,
+                    "candidate_source_count": 4,
+                    "reachable_candidate_source_count": 4,
+                    "report_success": True,
+                },
+            ]
+        )
+
+        self.assertEqual(summary["candidate_source_count"], 9)
+        self.assertEqual(summary["reachable_candidate_source_count"], 7)
+        self.assertAlmostEqual(summary["candidate_source_reachability_rate"], 7 / 9)
+
 
 if __name__ == "__main__":
     unittest.main()

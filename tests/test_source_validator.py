@@ -4,11 +4,30 @@ from evals.chinese_reliability.source_validator import (
     FetchResponse,
     SourceValidator,
     deduplicate_urls,
+    extract_report_citation_urls,
     normalize_url,
 )
 
 
 class SourceValidatorTests(unittest.IsolatedAsyncioTestCase):
+    def test_extract_report_citation_urls_only_returns_actual_http_links(self):
+        report = """
+正文引用[教育部文件](https://example.com/policy?utm_source=test#section)，
+重复引用[同一文件](https://example.com/policy)，以及
+[带括号的来源](https://example.com/report_(final)).
+![说明图片](https://example.com/chart.png)
+[站内章节](#summary)
+`[代码示例](https://example.com/code)`
+"""
+
+        self.assertEqual(
+            extract_report_citation_urls(report),
+            [
+                "https://example.com/policy",
+                "https://example.com/report_(final)",
+            ],
+        )
+
     def test_normalize_url_removes_tracking_and_fragment_but_keeps_content_query(self):
         url = (
             "HTTPS://Example.COM:443/report/?id=42&utm_source=newsletter"

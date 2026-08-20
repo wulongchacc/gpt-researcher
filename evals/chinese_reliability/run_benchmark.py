@@ -16,7 +16,7 @@ from typing import Callable, Iterable
 
 from .metrics import build_run_metrics, summarize_runs
 from .outline_metrics import measure_outline_coverage
-from .source_validator import SourceValidator
+from .source_validator import SourceValidator, extract_report_citation_urls
 
 
 HERE = Path(__file__).resolve().parent
@@ -163,6 +163,7 @@ async def run_single_case(
     validator = validator or SourceValidator()
     report = ""
     source_results = []
+    candidate_source_results = []
     error = None
     outline_duration = (
         float(outline_record["outline_duration_seconds"])
@@ -189,7 +190,26 @@ async def run_single_case(
         researcher = researcher_factory(**researcher_kwargs)
         await researcher.conduct_research()
         report = await researcher.write_report()
-        source_results = await validator.validate_many(researcher.get_source_urls())
+        candidate_source_results = await validator.validate_many(
+            researcher.get_source_urls()
+        )
+        citation_urls = extract_report_citation_urls(report)
+        known_results = {
+            result.normalized_url: result for result in candidate_source_results
+        }
+        known_results.update(
+            {
+                result.final_url: result
+                for result in candidate_source_results
+                if result.final_url
+            }
+        )
+        missing_urls = [url for url in citation_urls if url not in known_results]
+        for result in await validator.validate_many(missing_urls):
+            known_results[result.normalized_url] = result
+            if result.final_url:
+                known_results[result.final_url] = result
+        source_results = [known_results[url] for url in citation_urls]
         cost = outline_cost + researcher.get_costs()
     except Exception as exc:
         error = f"{type(exc).__name__}: {exc}"
@@ -216,6 +236,13 @@ async def run_single_case(
         "report_type": case["report_type"],
         "report": report,
         "source_results": [asdict(result) for result in source_results],
+        "candidate_source_results": [
+            asdict(result) for result in candidate_source_results
+        ],
+        "candidate_source_count": len(candidate_source_results),
+        "reachable_candidate_source_count": sum(
+            result.status == "valid" for result in candidate_source_results
+        ),
         "retry_count": 0,
         "outline_duration_seconds": outline_duration,
         "outline_cost": outline_cost,
@@ -232,8 +259,8 @@ def _summary_markdown(metadata: dict, summaries: dict) -> str:
         f"- Git提交：`{metadata['git_commit']}`",
         f"- 运行时间：`{metadata['timestamp']}`",
         "",
-        "| 报告模式 | 题目数 | 成功率 | 有效引用率 | 平均耗时（秒） | 平均成本 | 提纲覆盖率 |",
-        "|---|---:|---:|---:|---:|---:|---:|",
+        "| 报告模式 | 题目数 | 成功率 | 有效引用率 | 候选来源可访问率 | 平均耗时（秒） | 平均成本 | 提纲覆盖率 |",
+        "|---|---:|---:|---:|---:|---:|---:|---:|",
     ]
     labels = {"overall": "整体", "research_report": "Simple", "deep": "Deep"}
     for key in ("overall", "research_report", "deep"):
@@ -241,11 +268,12 @@ def _summary_markdown(metadata: dict, summaries: dict) -> str:
         duration = summary["average_duration_seconds"]
         cost = summary["average_cost"]
         lines.append(
-            "| {label} | {count} | {success:.1%} | {valid:.1%} | {duration} | {cost} | {coverage:.1%} |".format(
+            "| {label} | {count} | {success:.1%} | {valid:.1%} | {candidate:.1%} | {duration} | {cost} | {coverage:.1%} |".format(
                 label=labels[key],
                 count=summary["total_queries"],
                 success=summary["report_success_rate"],
                 valid=summary["valid_citation_rate"],
+                candidate=summary["candidate_source_reachability_rate"],
                 duration=f"{duration:.1f}" if duration is not None else "-",
                 cost=f"${cost:.4f}" if cost is not None else "-",
                 coverage=summary["outline_coverage_rate"],
