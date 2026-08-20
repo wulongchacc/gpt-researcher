@@ -21,7 +21,11 @@ class FakeResearcher:
         return ["context"]
 
     async def write_report(self):
-        return "中" * 900
+        return (
+            "中" * 900
+            + "\n[来源A](https://a.example)"
+            + "\n[来源B](https://b.example)"
+        )
 
     def get_source_urls(self):
         return ["https://a.example", "https://b.example", "https://c.example"]
@@ -71,7 +75,7 @@ class ReliabilityRunnerTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual([case["id"] for case in cases], ["simple-01", "deep-01"])
 
-    async def test_run_single_case_collects_report_sources_and_metrics(self):
+    async def test_run_single_case_separates_report_citations_from_candidate_sources(self):
         case = {
             "id": "q1",
             "question": "测试问题",
@@ -87,7 +91,12 @@ class ReliabilityRunnerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["id"], "q1")
         self.assertEqual(result["report_type"], "research_report")
         self.assertTrue(result["report_success"])
-        self.assertEqual(result["valid_citation_count"], 3)
+        self.assertEqual(result["citation_count"], 2)
+        self.assertEqual(result["valid_citation_count"], 2)
+        self.assertEqual(len(result["source_results"]), 2)
+        self.assertEqual(result["candidate_source_count"], 3)
+        self.assertEqual(result["reachable_candidate_source_count"], 3)
+        self.assertEqual(len(result["candidate_source_results"]), 3)
         self.assertAlmostEqual(result["cost"], 0.03)
 
     async def test_enhanced_case_uses_confirmed_outline_and_includes_outline_cost(self):
