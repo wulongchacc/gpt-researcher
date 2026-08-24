@@ -5,6 +5,7 @@ and content extraction from URLs.
 """
 
 from gpt_researcher.utils.workers import WorkerPool
+from gpt_researcher.sources.validator import admit_scraped_sources
 
 from ..actions.utils import stream_output
 from ..actions.web_scraping import scrape_urls
@@ -52,8 +53,20 @@ class BrowserManager:
                 self.researcher.websocket,
             )
 
+        for url in urls:
+            try:
+                self.researcher.source_registry.record_candidate(url)
+            except ValueError:
+                continue
+
         scraped_content, images = await scrape_urls(
             urls, self.researcher.cfg, self.worker_pool
+        )
+        scraped_content = admit_scraped_sources(
+            scraped_content,
+            self.researcher.source_registry,
+            min_content_chars=self.researcher.cfg.min_source_content_chars,
+            min_sentences=self.researcher.cfg.min_source_sentences,
         )
         self.researcher.add_research_sources(scraped_content)
         new_images = self.select_top_images(images, k=4)  # Select top 4 images

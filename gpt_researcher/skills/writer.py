@@ -7,6 +7,11 @@ writing, including introductions, conclusions, and subtopic management.
 import json
 from typing import Dict, Optional
 
+from ..actions.markdown_processing import (
+    build_source_citation_instruction,
+    render_source_context,
+    render_validated_references,
+)
 from ..actions import (
     generate_draft_section_titles,
     generate_report,
@@ -14,6 +19,8 @@ from ..actions import (
     write_conclusion,
     write_report_introduction,
 )
+from ..sources.finalizer import repair_report_sources, report_body_char_count
+from ..sources.validator import SourceValidator
 from ..utils.llm import construct_subtopics
 from .outline_execution import format_outline_report_instruction
 
@@ -76,6 +83,18 @@ class ReportGenerator:
             )
 
         context = ext_context or self.researcher.context
+        citation_instruction = ""
+        registry = getattr(self.researcher, "source_registry", None)
+        use_source_whitelist = (
+            getattr(self.researcher, "model_profile", None) == "simple"
+            and self.researcher.report_source == "web"
+            and registry is not None
+            and bool(registry.usable_records())
+        )
+        if use_source_whitelist:
+            usable_records = registry.usable_records()
+            context = render_source_context(usable_records)
+            citation_instruction = build_source_citation_instruction(usable_records)
 
         # Guard against fabricating a report from nothing: if no research content was
         # gathered (every retriever returned empty / was blocked / rate-limited), don't
@@ -114,6 +133,7 @@ class ReportGenerator:
             self.researcher.outline
         )
         report_params["available_images"] = available_images  # Pass pre-generated images
+        report_params["citation_instruction"] = citation_instruction
 
         if self.researcher.report_type == "subtopic_report":
             report_params.update({
@@ -126,6 +146,36 @@ class ReportGenerator:
             report_params["cost_callback"] = self.researcher.add_costs
 
         report = await generate_report(**report_params, **self.researcher.kwargs)
+        if use_source_whitelist:
+            report = render_validated_references(report, registry)
+            cited_records = registry.cited_records()
+            source_validator = getattr(
+                self.researcher,
+                "source_validator",
+                None,
+            ) or SourceValidator()
+            validation_results = await source_validator.validate_many(
+                [record.canonical_url for record in cited_records]
+            )
+            repaired = repair_report_sources(report, registry, validation_results)
+            body_chars = report_body_char_count(repaired.report)
+
+            quality_failures = []
+            if repaired.valid_citation_count < 2:
+                quality_failures.append(
+                    "可靠来源不足：在线复检后仅保留 "
+                    f"{repaired.valid_citation_count} 条有效来源，至少需要 2 条。"
+                )
+            if body_chars < 200:
+                quality_failures.append(
+                    f"正文长度不足：当前正文为 {body_chars} 字，至少需要 200 字。"
+                )
+
+            if quality_failures:
+                return "# 报告生成失败\n\n" + "\n".join(
+                    f"- {failure}" for failure in quality_failures
+                )
+            report = repaired.report
 
         if self.researcher.verbose:
             await stream_output(

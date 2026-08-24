@@ -3,7 +3,16 @@ from .query_processing import plan_research_outline, get_search_results
 from .agent_creator import extract_json_with_regex, choose_agent
 from .web_scraping import scrape_urls
 from .report_generation import write_conclusion, summarize_url, generate_draft_section_titles, generate_report, write_report_introduction
-from .markdown_processing import extract_headers, extract_sections, table_of_contents, add_references
+from .markdown_processing import (
+    add_references,
+    build_source_citation_instruction,
+    extract_cited_source_ids,
+    extract_headers,
+    extract_sections,
+    render_source_context,
+    render_validated_references,
+    table_of_contents,
+)
 from .utils import stream_output
 
 __all__ = [
@@ -22,6 +31,10 @@ __all__ = [
     "extract_sections",
     "table_of_contents",
     "add_references",
+    "build_source_citation_instruction",
+    "extract_cited_source_ids",
+    "render_source_context",
+    "render_validated_references",
     "stream_output",
     "choose_agent"
 ]

@@ -29,6 +29,7 @@ from .skills.deep_research import DeepResearchSkill
 from .skills.image_generator import ImageGenerator
 from .skills.researcher import ResearchConductor
 from .skills.writer import ReportGenerator
+from .sources.registry import SourceRegistry
 from .utils.enum import ReportSource, ReportType, Tone
 from .utils.language import normalize_report_language
 from .utils.llm import create_chat_completion
@@ -170,6 +171,7 @@ class GPTResearcher:
         self.complement_source_urls = complement_source_urls
         self.query_domains = query_domains or []
         self.research_sources = []  # The list of scraped sources including title, content and images
+        self.source_registry = SourceRegistry()
         self.research_images = []  # The list of selected research images
         self.documents = documents
         self.vector_store = VectorStoreWrapper(vector_store) if vector_store else None
@@ -697,12 +699,12 @@ class GPTResearcher:
         return table_of_contents(markdown_text)
 
     def get_source_urls(self) -> list:
-        """Get all visited source URLs.
+        """Get source URLs that passed content admission.
 
         Returns:
-            List of visited URL strings.
+            List of usable source URL strings.
         """
-        return list(self.visited_urls)
+        return self.source_registry.usable_urls()
 
     def get_research_context(self) -> list:
         """Get the accumulated research context.

@@ -14,6 +14,8 @@ from ..actions.agent_creator import choose_agent
 from ..actions.query_processing import get_search_results, plan_research_outline
 from ..actions.utils import stream_output
 from ..document import DocumentLoader, LangChainDocumentLoader, OnlineDocumentLoader
+from ..sources.registry import SourceRegistry
+from ..sources.validator import admit_scraped_sources
 from ..utils.enum import ReportSource, ReportType
 from ..utils.logging_config import get_json_handler
 from .outline_execution import build_simple_outline_search_queries
@@ -100,6 +102,8 @@ class ResearchConductor:
         
         # Reset visited_urls and source_urls at the start of each research task
         self.researcher.visited_urls.clear()
+        self.researcher.source_registry = SourceRegistry()
+        self.researcher.research_sources.clear()
         research_data = []
 
         if self.researcher.verbose:
@@ -801,6 +805,11 @@ class ResearchConductor:
                 for result in search_results:
                     url = result.get("href") or result.get("url")
                     raw_content = result.get("raw_content")
+                    if url:
+                        try:
+                            self.researcher.source_registry.record_candidate(url)
+                        except ValueError:
+                            continue
                     if url and raw_content and len(raw_content) > 100:
                         # Only raw_content signals that a retriever already fetched the full page.
                         # body is snippet-sized text for most web retrievers and still needs scraping.
@@ -808,7 +817,6 @@ class ResearchConductor:
                             "url": url,
                             "raw_content": raw_content,
                         })
-                        self.researcher.add_research_sources([{"url": url}])
                     elif url:
                         new_search_urls.append(url)
             except Exception as e:
@@ -849,8 +857,15 @@ class ResearchConductor:
         # Scrape URLs that need fetching (skip those already provided by retrievers)
         scraped_content = await self.researcher.scraper_manager.browse_urls(new_search_urls)
 
-        # Merge pre-fetched content from retrievers that already provide full text
-        scraped_content.extend(prefetched_content)
+        # Retrievers with full text must pass the same admission gate as scraped pages.
+        admitted_prefetched = admit_scraped_sources(
+            prefetched_content,
+            self.researcher.source_registry,
+            min_content_chars=self.researcher.cfg.min_source_content_chars,
+            min_sentences=self.researcher.cfg.min_source_sentences,
+        )
+        self.researcher.add_research_sources(admitted_prefetched)
+        scraped_content.extend(admitted_prefetched)
 
         if self.researcher.vector_store:
             self.researcher.vector_store.load(scraped_content)
