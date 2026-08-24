@@ -122,16 +122,50 @@ class FakeFullContentRetriever:
         ]
 
 
+class FakeSourceRegistry:
+    def __init__(self):
+        self.candidate_urls = []
+        self._usable = []
+
+    def record_candidate(self, url):
+        canonical_url = url.split("?utm_", 1)[0]
+        if canonical_url not in self.candidate_urls:
+            self.candidate_urls.append(canonical_url)
+        return canonical_url
+
+    def add_usable(self, record):
+        from dataclasses import replace
+
+        for existing in self._usable:
+            if existing.canonical_url == record.canonical_url:
+                return existing
+        stored = replace(record, source_id=f"S{len(self._usable) + 1}")
+        self._usable.append(stored)
+        return stored
+
+    def usable_urls(self):
+        return [record.canonical_url for record in self._usable]
+
+
 class ResearchConductorRetrievalTests(unittest.IsolatedAsyncioTestCase):
     def make_researcher(self, retriever_class):
         class FakeResearcher:
             def __init__(self):
                 self.retrievers = [retriever_class]
-                self.cfg = SimpleNamespace(max_search_results_per_query=5)
+                self.cfg = SimpleNamespace(
+                    max_search_results_per_query=5,
+                    min_source_content_chars=200,
+                    min_source_sentences=2,
+                )
                 self.verbose = False
                 self.websocket = None
                 self.visited_urls = set()
                 self.research_sources = []
+                self.source_registry = FakeSourceRegistry()
+                self.scraper_manager = SimpleNamespace(
+                    browse_urls=AsyncMock(return_value=[])
+                )
+                self.vector_store = None
 
             def add_research_sources(self, sources):
                 self.research_sources.extend(sources)
@@ -160,6 +194,44 @@ class ResearchConductorRetrievalTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             prefetched,
             [{"url": "https://example.com/full", "raw_content": "C" * 500}],
+        )
+
+    async def test_prefetched_full_content_is_admitted_before_context(self):
+        class SentenceContentRetriever:
+            def __init__(self, query, query_domains=None):
+                self.query = query
+
+            def search(self, max_results=10):
+                return [
+                    {
+                        "href": "https://example.com/full?utm_source=test",
+                        "raw_content": "第一句是完整内容。第二句提供更多事实。" + "资料" * 100,
+                    },
+                    {
+                        "href": "https://example.com/short",
+                        "raw_content": "内容过短。",
+                    },
+                ]
+
+        researcher = self.make_researcher(SentenceContentRetriever)
+        conductor = ResearchConductor(researcher)
+
+        scraped = await conductor._scrape_data_by_urls("可靠来源")
+
+        self.assertEqual(len(scraped), 1)
+        self.assertEqual(scraped[0]["url"], "https://example.com/full")
+        self.assertEqual(scraped[0]["source_id"], "S1")
+        self.assertEqual(researcher.research_sources, scraped)
+        self.assertEqual(
+            researcher.source_registry.candidate_urls,
+            [
+                "https://example.com/full",
+                "https://example.com/short",
+            ],
+        )
+        self.assertEqual(
+            researcher.source_registry.usable_urls(),
+            ["https://example.com/full"],
         )
 
     async def test_confirmed_simple_outline_drives_three_section_queries_plus_original(self):

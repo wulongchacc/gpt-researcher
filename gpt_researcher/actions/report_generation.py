@@ -221,6 +221,7 @@ async def generate_report(
     cost_callback: callable = None,
     custom_prompt: str = "", # This can be any prompt the user chooses with the context
     outline_instruction: str = "",
+    citation_instruction: str = "",
     headers=None,
     prompt_family: type[PromptFamily] | PromptFamily = PromptFamily,
     available_images: list = None,
@@ -260,6 +261,8 @@ async def generate_report(
 
     if outline_instruction:
         content += f"\n\nCONFIRMED REPORT STRUCTURE:\n{outline_instruction}"
+    if citation_instruction:
+        content += f"\n\n{citation_instruction}"
     
     # Add available images instruction if images were pre-generated
     if available_images:
