@@ -1,6 +1,7 @@
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin
 
+from ..encoding import resolve_response_encoding
 from ..utils import get_relevant_images, extract_title, get_text_from_soup, clean_soup
 
 class BeautifulSoupScraper:
@@ -23,7 +24,9 @@ class BeautifulSoupScraper:
         try:
             response = self.session.get(self.link, timeout=4)
             soup = BeautifulSoup(
-                response.content, "lxml", from_encoding=response.encoding
+                response.content,
+                "lxml",
+                from_encoding=resolve_response_encoding(response),
             )
 
             soup = clean_soup(soup)
